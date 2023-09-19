@@ -1,0 +1,7 @@
+https://themes.getbootstrap.com/preview/?theme_id=60676
+
+https://getbootstrap.com/docs/4.0/components/carousel/
+
+https://getbootstrap.com/docs/4.0/utilities/sizing/
+
+https://mdbootstrap.com/docs/standard/extended/sticky-footer/
