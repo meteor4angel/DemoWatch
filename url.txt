@@ -5,3 +5,5 @@ https://getbootstrap.com/docs/4.0/components/carousel/
 https://getbootstrap.com/docs/4.0/utilities/sizing/
 
 https://mdbootstrap.com/docs/standard/extended/sticky-footer/
+
+https://adminlte.io/themes/v3/pages/forms/general.html
