@@ -9,3 +9,5 @@ https://mdbootstrap.com/docs/standard/extended/sticky-footer/
 https://adminlte.io/themes/v3/pages/forms/general.html
 
 https://adminlte.io/themes/AdminLTE/pages/forms/advanced.html
+
+https://www.codeply.com/go/cdvAd8Eahp/bootstrap-show-upload-image-before-click-on-submit-button
