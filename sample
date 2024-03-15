@@ -1,0 +1,45 @@
+// Arrange
+        var httpClientMock = new Mock<HttpClient>();
+
+        var baseUri = new Uri("https://api.example.com");
+        var response1 = new ApiResponse { Data = new List<string> { "Response1Data1", "Response1Data2" } };
+        var response2 = new ApiResponse { Data = new List<string> { "Response2Data1", "Response2Data2" } };
+
+        var responseContent1 = JsonConvert.SerializeObject(response1);
+        var responseContent2 = JsonConvert.SerializeObject(response2);
+
+        httpClientMock
+            .Setup(x => x.SendAsync(It.IsAny<HttpRequestMessage>(), default))
+            .Returns((HttpRequestMessage request, System.Threading.CancellationToken cancellationToken) =>
+            {
+                // Extract the last part of the request URI
+                var lastSegment = request.RequestUri.Segments.Last(); // Get the last segment
+
+                if (lastSegment == "endpoint1/")
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(responseContent1)
+                    });
+                }
+                else if (lastSegment == "endpoint2/")
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(responseContent2)
+                    });
+                }
+                else
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+                }
+            });
+
+        var myService = new MyService(httpClientMock.Object);
+
+        // Act
+        var (resp1, resp2) = await myService.GetResponsesFromTwoRequestsAsync(baseUri);
+
+        // Assert
+        Assert.Equal(response1.Data, resp1.Data);
+        Assert.Equal(response2.Data, resp2.Data);
