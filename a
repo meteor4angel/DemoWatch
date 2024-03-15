@@ -1,0 +1,59 @@
+ [Fact]
+    public async Task GetResponsesFromTwoRequestsAsync_Should_Compare_Values()
+    {
+        // Arrange
+        var handlerMock = new Mock<HttpMessageHandler>();
+
+        var baseUri = new Uri("https://api.example.com");
+        var endpoint1Uri = new Uri(baseUri, "endpoint1");
+        var endpoint2Uri = new Uri(baseUri, "endpoint2");
+
+        var response1 = new ApiResponse { Data = new List<string> { "Response1Data1", "Response1Data2" } };
+        var response2 = new ApiResponse { Data = new List<string> { "Response2Data1", "Response2Data2" } };
+
+        var responseContent1 = JsonConvert.SerializeObject(response1);
+        var responseContent2 = JsonConvert.SerializeObject(response2);
+
+        handlerMock
+            .Protected()
+            // Setup the PROTECTED method to mock SendAsync
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken cancellationToken) =>
+            {
+                // Check the request URI to determine which endpoint is being called
+                var requestUri = request.RequestUri;
+
+                if (requestUri == endpoint1Uri)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(responseContent1)
+                    };
+                }
+                else if (requestUri == endpoint2Uri)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(responseContent2)
+                    };
+                }
+                else
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+            });
+
+        var httpClient = new HttpClient(handlerMock.Object);
+        var myService = new MyService(httpClient);
+
+        // Act
+        var (resp1, resp2) = await myService.GetResponsesFromTwoRequestsAsync(baseUri);
+
+        // Assert
+        Assert.Equal(response1.Data, resp1.Data);
+        Assert.Equal(response2.Data, resp2.Data);
+    }
