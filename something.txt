@@ -1,0 +1,60 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        string filePath = "path/to/your/csv/file.csv";
+        List<Person> people = ReadCsvFile(filePath);
+        
+        // Now you have a list of Person objects
+        foreach(var person in people)
+        {
+            Console.WriteLine($"Name: {person.Name}, Age: {person.Age}, Occupation: {person.Occupation}");
+        }
+    }
+
+    static List<Person> ReadCsvFile(string filePath)
+    {
+        List<Person> people = new List<Person>();
+
+        using (var reader = new StreamReader(filePath))
+        {
+            string[] headers = reader.ReadLine().Split(',');
+            while (!reader.EndOfStream)
+            {
+                string[] values = reader.ReadLine().Split(',');
+
+                var person = new Person();
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    switch (headers[i].Trim())
+                    {
+                        case "Name":
+                            person.Name = values[i].Trim();
+                            break;
+                        case "Age":
+                            person.Age = int.Parse(values[i].Trim());
+                            break;
+                        case "Occupation":
+                            person.Occupation = values[i].Trim();
+                            break;
+                        // Add more cases for additional properties
+                    }
+                }
+                people.Add(person);
+            }
+        }
+
+        return people;
+    }
+}
+public class Person
+{
+    public string Name { get; set; }
+    public int Age { get; set; }
+    public string Occupation { get; set; }
+}
