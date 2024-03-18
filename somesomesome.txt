@@ -1,0 +1,9 @@
+static void PrintPropertyValues(string generatedCode, string propertyName)
+        {
+            // Print all occurrences of the property name in the generated code
+            Console.WriteLine($"Values of property '{propertyName}':");
+            foreach (Match match in Regex.Matches(generatedCode, propertyName + @"=\s*([^;]+);"))
+            {
+                Console.WriteLine(match.Groups[1].Value.Trim());
+            }
+        }
