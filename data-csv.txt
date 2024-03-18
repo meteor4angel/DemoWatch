@@ -1,0 +1,49 @@
+<#@ template language="C#" #>
+<#@ output extension=".cs" #>
+
+using System;
+using System.Collections.Generic;
+
+namespace CsvReader
+{
+    public class CsvData
+    {
+<#
+    // Read the CSV file
+    string[] lines = System.IO.File.ReadAllLines("data.csv");
+    
+    // Split the header line to get column names
+    string[] headers = lines[0].Split(',');
+    
+    // Output properties based on column names
+    for (int i = 0; i < headers.Length; i++)
+    {
+#>
+        public string <#= headers[i].Trim() #> { get; set; }
+<#
+    }
+#>
+
+        // Constructor to initialize properties from CSV rows
+        public CsvData(string csvRow)
+        {
+            string[] values = csvRow.Split(',');
+<#
+    for (int i = 0; i < headers.Length; i++)
+    {
+#>
+            <#= headers[i].Trim() #> = values[<#= i #>];
+<#
+    }
+#>
+        }
+    }
+}
+
+//data.csv
+/*
+Name, Age, Occupation
+John, 30, Engineer
+Alice, 25, Developer
+Bob, 35, Manager
+*/
