@@ -331,3 +331,24 @@ namespace CsvData
     }
 }
 
+
+/ Set the file path to the CSV file
+        string filePath = "example.csv";
+
+        // Define the filter columns and values
+        Dictionary<string, string[]> filters = new Dictionary<string, string[]>();
+        filters["Age"] = new string[] { "30", "35" };
+        filters["Country"] = new string[] { "USA" };
+
+        // Create an instance of the text template
+        var template = new CsvHelperTemplate
+        {
+            Session = new TextTemplatingSession(),
+            FilePath = filePath,
+            Filters = filters
+        };
+
+        // Process the template
+        string generatedCode = template.TransformText();
+
+        // Output the generated code
