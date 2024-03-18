@@ -188,3 +188,12 @@ class CustomTextTemplatingEngineHost : ITextTemplatingEngineHost
         }
     }
 }
+
+static string GenerateT4Template(string ttFileContent, string[] filterColumn, string[] filterValues)
+        {
+            // Replace placeholders in the .tt file content with actual values
+            ttFileContent = ttFileContent.Replace("<#= FilterColumn #>", $"new string[] {{ \"{string.Join("\", \"", filterColumn)}\" }}");
+            ttFileContent = ttFileContent.Replace("<#= FilterValues #>", string.Join(", ", filterValues));
+
+            return ttFileContent;
+        }
