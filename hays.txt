@@ -253,3 +253,81 @@ static IEnumerable<string[]> ReadAndFilterCsv(string filePath, Dictionary<string
 
     return filteredRows;
 }
+
+
+
+<#@ template language="C#" #>
+<#@ output extension=".cs" #>
+<#@ parameter type="System.String" name="FilePath" #>
+<#@ parameter type="System.Collections.Generic.Dictionary<string, string[]>" name="Filters" #>
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+namespace CsvData
+{
+    public class CsvHelper
+    {
+        public static IEnumerable<string[]> FilterRows(string filePath)
+        {
+            return FilterRows(filePath, new Dictionary<string, string[]>());
+        }
+
+        public static IEnumerable<string[]> FilterRows(string filePath, Dictionary<string, string[]> filters)
+        {
+            List<string[]> filteredRows = new List<string[]>();
+
+            using (StreamReader reader = new StreamReader(filePath))
+            {
+                // Read header
+                string headerLine = reader.ReadLine();
+                string[] header = headerLine.Split(',');
+
+                // Find indices of filter columns
+                Dictionary<string, int> filterColumnIndices = new Dictionary<string, int>();
+                foreach (var filter in filters)
+                {
+                    string filterColumn = filter.Key;
+                    int filterColumnIndex = Array.IndexOf(header, filterColumn);
+                    if (filterColumnIndex == -1)
+                    {
+                        throw new ArgumentException($"Filter column '{filterColumn}' not found in CSV file.");
+                    }
+                    filterColumnIndices.Add(filterColumn, filterColumnIndex);
+                }
+
+                // Read and filter rows
+                while (!reader.EndOfStream)
+                {
+                    string line = reader.ReadLine();
+                    string[] fields = line.Split(',');
+
+                    // Check if values in all filter columns match any of the filter values
+                    bool matchAllFilters = true;
+                    foreach (var filter in filters)
+                    {
+                        string filterColumn = filter.Key;
+                        string[] filterValues = filter.Value;
+                        int filterColumnIndex = filterColumnIndices[filterColumn];
+
+                        if (!filterValues.Contains(fields[filterColumnIndex]))
+                        {
+                            matchAllFilters = false;
+                            break;
+                        }
+                    }
+
+                    if (matchAllFilters)
+                    {
+                        filteredRows.Add(fields);
+                    }
+                }
+            }
+
+            return filteredRows;
+        }
+    }
+}
+
