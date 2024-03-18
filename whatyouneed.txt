@@ -205,3 +205,78 @@ namespace T4TemplateExample
     }
 }
 
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+namespace T4TemplateExample
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Specify the filter column and values
+            string filterColumn = "Age";
+            string[] filterValues = { "30", "35" }; // Filter values to match
+
+            // Read and filter CSV file
+            var filteredRows = ReadAndFilterCsvFile("data.csv", filterColumn, filterValues);
+
+            // Print filtered rows
+            foreach (var row in filteredRows)
+            {
+                Console.WriteLine($"Name: {row.Name}, Age: {row.Age}, Country: {row.Country}");
+            }
+        }
+
+        static List<CsvRow> ReadAndFilterCsvFile(string filePath, string filterColumn, string[] filterValues)
+        {
+            var filteredRows = new List<CsvRow>();
+
+            using (var reader = new StreamReader(filePath))
+            {
+                // Read header
+                var headers = reader.ReadLine().Split(',');
+
+                // Find index of filter column
+                int filterColumnIndex = Array.IndexOf(headers, filterColumn);
+
+                // Check if filter column exists
+                if (filterColumnIndex == -1)
+                {
+                    throw new ArgumentException($"Filter column '{filterColumn}' not found in CSV file.");
+                }
+
+                // Read and filter rows
+                while (!reader.EndOfStream)
+                {
+                    var values = reader.ReadLine().Split(',');
+
+                    // Check if value in filter column matches any of the filter values
+                    if (filterValues.Contains(values[filterColumnIndex]))
+                    {
+                        filteredRows.Add(new CsvRow
+                        {
+                            Name = values[0],
+                            Age = values[1],
+                            Country = values[2]
+                        });
+                    }
+                }
+            }
+
+            return filteredRows;
+        }
+    }
+
+    public class CsvRow
+    {
+        public string Name { get; set; }
+        public string Age { get; set; }
+        public string Country { get; set; }
+    }
+}
+
+
