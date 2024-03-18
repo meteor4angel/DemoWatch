@@ -197,3 +197,59 @@ static string GenerateT4Template(string ttFileContent, string[] filterColumn, st
 
             return ttFileContent;
         }
+
+
+static IEnumerable<string[]> ReadAndFilterCsv(string filePath, Dictionary<string, string[]> filters)
+{
+    List<string[]> filteredRows = new List<string[]>();
+
+    // Read the CSV file and stream its contents
+    using (TextFieldParser parser = new TextFieldParser(filePath))
+    {
+        parser.TextFieldType = FieldType.Delimited;
+        parser.SetDelimiters(",");
+
+        // Read header
+        string[] header = parser.ReadFields();
+
+        // Find indices of filter columns
+        Dictionary<string, int> filterColumnIndices = new Dictionary<string, int>();
+        foreach (var filter in filters)
+        {
+            int filterColumnIndex = Array.IndexOf(header, filter.Key);
+            if (filterColumnIndex == -1)
+            {
+                throw new ArgumentException($"Filter column '{filter.Key}' not found in CSV file.");
+            }
+            filterColumnIndices.Add(filter.Key, filterColumnIndex);
+        }
+
+        // Read and filter rows
+        while (!parser.EndOfData)
+        {
+            string[] fields = parser.ReadFields();
+
+            // Check if values in all filter columns match any of the filter values
+            bool matchAllFilters = true;
+            foreach (var filter in filters)
+            {
+                string filterColumn = filter.Key;
+                string[] filterValues = filter.Value;
+                int filterColumnIndex = filterColumnIndices[filterColumn];
+
+                if (!filterValues.Contains(fields[filterColumnIndex]))
+                {
+                    matchAllFilters = false;
+                    break;
+                }
+            }
+
+            if (matchAllFilters)
+            {
+                filteredRows.Add(fields);
+            }
+        }
+    }
+
+    return filteredRows;
+}
