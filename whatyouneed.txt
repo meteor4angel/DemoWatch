@@ -1,0 +1,207 @@
+<#@ template language="C#" #>
+<#@ output extension=".cs" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Linq" #>
+<#@ parameter type="string[]" name="Headers" #>
+<#@ parameter type="string[]" name="FilterColumns" #>
+<#@ parameter type="string[]" name="FilterValues" #>
+
+namespace CsvData
+{
+    public class CsvRow
+    {
+    <# foreach (var header in Headers) { #>
+        public string <#= header #> { get; set; }
+    <# } #>
+    }
+
+    public static class CsvHelper
+    {
+        public static List<CsvRow> FilterRows(List<CsvRow> rows)
+        {
+            List<CsvRow> filteredRows = new List<CsvRow>();
+
+            // Filter rows based on criteria
+            foreach (var row in rows)
+            {
+                if (MatchesFilter(row))
+                {
+                    filteredRows.Add(row);
+                }
+            }
+
+            return filteredRows;
+        }
+
+        private static bool MatchesFilter(CsvRow row)
+        {
+            // Check if the row matches the filter criteria
+            bool matches = true;
+            <# for (int i = 0; i < FilterColumns.Length; i++) { #>
+                if (row.<#= FilterColumns[i] #> != "<#= FilterValues[i] #>")
+                {
+                    matches = false;
+                    break;
+                }
+            <# } #>
+            return matches;
+        }
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
+
+namespace T4TemplateExample
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string csvFilePath = Path.Combine(currentDirectory, "data.csv");
+            string t4TemplateFilePath = Path.Combine(currentDirectory, "CsvReaderTemplate.tt");
+
+            // Read CSV file to get column headers and values
+            Dictionary<string, List<string>> csvData = ReadCsvFile(csvFilePath);
+
+            // Get the column headers from the CSV file
+            string[] headers = csvData.Keys.ToArray();
+
+            // Programmatically trigger the transformation of the T4 template file
+            string generatedCode = TransformT4Template(t4TemplateFilePath, headers, new[] { "Age", "Name" }, new[] { "30", "John" });
+
+            // Compile the generated code
+            var compiledAssembly = CompileGeneratedCode(generatedCode);
+
+            // Get rows from CSV file
+            List<dynamic> csvRows = GetCsvRows(csvData);
+
+            // Filter rows based on criteria specified in the T4 template
+            List<dynamic> filteredRows = FilterCsvRows(compiledAssembly, csvRows);
+
+            // Print filtered rows
+            foreach (var row in filteredRows)
+            {
+                Console.WriteLine(string.Join(", ", row.GetType().GetProperties().Select(p => $"{p.Name}: {p.GetValue(row)}")));
+            }
+        }
+
+        static Dictionary<string, List<string>> ReadCsvFile(string filePath)
+        {
+            var csvData = new Dictionary<string, List<string>>();
+
+            using (var reader = new StreamReader(filePath))
+            {
+                var headers = reader.ReadLine().Split(',');
+                foreach (var header in headers)
+                {
+                    csvData.Add(header.Trim(), new List<string>());
+                }
+
+                while (!reader.EndOfStream)
+                {
+                    var values = reader.ReadLine().Split(',');
+                    for (int i = 0; i < values.Length; i++)
+                    {
+                        csvData[headers[i].Trim()].Add(values[i]);
+                    }
+                }
+            }
+
+            return csvData;
+        }
+
+        static string TransformT4Template(string templateFilePath, string[] headers, string[] filterColumns, string[] filterValues)
+        {
+            // Load the template content
+            string templateContent = File.ReadAllText(templateFilePath);
+
+            // Set the template parameters
+            var session = new Dictionary<string, string[]>();
+            session["Headers"] = headers;
+            session["FilterColumns"] = filterColumns;
+            session["FilterValues"] = filterValues;
+
+            // Process the template
+            var host = new Microsoft.VisualStudio.TextTemplating.Engine();
+            var transformation = host.ProcessTemplate(templateContent, session);
+            
+            // Return the generated code
+            return transformation;
+        }
+
+        static Assembly CompileGeneratedCode(string code)
+        {
+            // Compile the generated code
+            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(code);
+            CSharpCompilation compilation = CSharpCompilation.Create("DynamicAssembly")
+                .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+                .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+                .AddSyntaxTrees(syntaxTree);
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                EmitResult result = compilation.Emit(ms);
+
+                if (!result.Success)
+                {
+                    // Handle compilation errors
+                    IEnumerable<Diagnostic> failures = result.Diagnostics.Where(diagnostic =>
+                        diagnostic.IsWarningAsError ||
+                        diagnostic.Severity == DiagnosticSeverity.Error);
+
+                    foreach (Diagnostic diagnostic in failures)
+                    {
+                        Console.WriteLine($"{diagnostic.Id}: {diagnostic.GetMessage()}");
+                    }
+                    return null;
+                }
+                else
+                {
+                    ms.Seek(0, SeekOrigin.Begin);
+                    return Assembly.Load(ms.ToArray());
+                }
+            }
+        }
+
+        static List<dynamic> GetCsvRows(Dictionary<string, List<string>> csvData)
+        {
+            // Convert CSV data to dynamic objects
+            List<dynamic> rows = new List<dynamic>();
+
+            int rowCount = csvData.Values.First().Count;
+            for (int i = 0; i < rowCount; i++)
+            {
+                var row = new System.Dynamic.ExpandoObject() as IDictionary<string, object>;
+                foreach (var kvp in csvData)
+                {
+                    row.Add(kvp.Key, kvp.Value[i]);
+                }
+                rows.Add(row);
+            }
+
+            return rows;
+        }
+
+        static List<dynamic> FilterCsvRows(Assembly compiledAssembly, List<dynamic> csvRows)
+        {
+            // Get the CsvHelper class from the compiled assembly
+            Type csvHelperType = compiledAssembly.GetType("CsvData.CsvHelper");
+
+            // Invoke the FilterRows method
+            var methodInfo = csvHelperType.GetMethod("FilterRows");
+            dynamic filteredRows = methodInfo.Invoke(null, new object[] { csvRows });
+
+            return filteredRows;
+        }
+    }
+}
+
