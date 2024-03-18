@@ -1,4 +1,68 @@
-static void PrintPropertyValues(string generatedCode, string propertyName)
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+
+namespace T4TemplateExample
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string csvFilePath = Path.Combine(currentDirectory, "data.csv");
+            string t4TemplateFilePath = Path.Combine(currentDirectory, "CsvReaderTemplate.tt");
+
+            // Read CSV file to get column headers
+            string[] headers = GetCsvHeaders(csvFilePath);
+
+            // Check if a property name exists
+            string propertyNameToCheck = "Age";
+            bool propertyNameExists = Array.Exists(headers, header => header.Trim().Equals(propertyNameToCheck, StringComparison.OrdinalIgnoreCase));
+            Console.WriteLine($"Property '{propertyNameToCheck}' {(propertyNameExists ? "exists" : "does not exist")} in the CSV file.");
+
+            // Programmatically trigger the transformation of the T4 template file
+            string generatedCode = TransformT4Template(t4TemplateFilePath, headers);
+
+            // Print values of the property if it exists
+            if (propertyNameExists)
+            {
+                PrintPropertyValues(generatedCode, propertyNameToCheck);
+            }
+            else
+            {
+                Console.WriteLine($"Property '{propertyNameToCheck}' does not exist in the CSV file.");
+            }
+        }
+
+        static string[] GetCsvHeaders(string filePath)
+        {
+            // Read the first line of the CSV file to get the headers
+            string[] headers = null;
+            using (StreamReader reader = new StreamReader(filePath))
+            {
+                string headerLine = reader.ReadLine();
+                headers = headerLine.Split(',');
+            }
+            return headers;
+        }
+
+        static string TransformT4Template(string templateFilePath, string[] headers)
+        {
+            // Load the template content
+            string templateContent = File.ReadAllText(templateFilePath);
+
+            // Replace placeholders in the template with actual values
+            foreach (var header in headers)
+            {
+                templateContent = templateContent.Replace("<<PropertyName>>", header);
+                // You can add more placeholders in the template and replace them here as needed
+            }
+
+            return templateContent;
+        }
+
+        static void PrintPropertyValues(string generatedCode, string propertyName)
         {
             // Print all occurrences of the property name in the generated code
             Console.WriteLine($"Values of property '{propertyName}':");
@@ -7,3 +71,5 @@ static void PrintPropertyValues(string generatedCode, string propertyName)
                 Console.WriteLine(match.Groups[1].Value.Trim());
             }
         }
+    }
+}
