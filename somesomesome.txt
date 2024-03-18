@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
+using System.Linq;
 
 namespace T4TemplateExample
 {
@@ -13,21 +13,21 @@ namespace T4TemplateExample
             string csvFilePath = Path.Combine(currentDirectory, "data.csv");
             string t4TemplateFilePath = Path.Combine(currentDirectory, "CsvReaderTemplate.tt");
 
-            // Read CSV file to get column headers
-            string[] headers = GetCsvHeaders(csvFilePath);
+            // Read CSV file to get column headers and values
+            Dictionary<string, List<string>> csvData = ReadCsvFile(csvFilePath);
 
             // Check if a property name exists
             string propertyNameToCheck = "Age";
-            bool propertyNameExists = Array.Exists(headers, header => header.Trim().Equals(propertyNameToCheck, StringComparison.OrdinalIgnoreCase));
+            bool propertyNameExists = csvData.ContainsKey(propertyNameToCheck);
             Console.WriteLine($"Property '{propertyNameToCheck}' {(propertyNameExists ? "exists" : "does not exist")} in the CSV file.");
 
             // Programmatically trigger the transformation of the T4 template file
-            string generatedCode = TransformT4Template(t4TemplateFilePath, headers);
+            string generatedCode = TransformT4Template(t4TemplateFilePath, csvData.Keys.ToArray());
 
             // Print values of the property if it exists
             if (propertyNameExists)
             {
-                PrintPropertyValues(generatedCode, propertyNameToCheck);
+                PrintPropertyValues(generatedCode, propertyNameToCheck, csvData[propertyNameToCheck]);
             }
             else
             {
@@ -35,16 +35,29 @@ namespace T4TemplateExample
             }
         }
 
-        static string[] GetCsvHeaders(string filePath)
+        static Dictionary<string, List<string>> ReadCsvFile(string filePath)
         {
-            // Read the first line of the CSV file to get the headers
-            string[] headers = null;
-            using (StreamReader reader = new StreamReader(filePath))
+            var csvData = new Dictionary<string, List<string>>();
+
+            using (var reader = new StreamReader(filePath))
             {
-                string headerLine = reader.ReadLine();
-                headers = headerLine.Split(',');
+                var headers = reader.ReadLine().Split(',');
+                foreach (var header in headers)
+                {
+                    csvData.Add(header.Trim(), new List<string>());
+                }
+
+                while (!reader.EndOfStream)
+                {
+                    var values = reader.ReadLine().Split(',');
+                    for (int i = 0; i < values.Length; i++)
+                    {
+                        csvData[headers[i].Trim()].Add(values[i]);
+                    }
+                }
             }
-            return headers;
+
+            return csvData;
         }
 
         static string TransformT4Template(string templateFilePath, string[] headers)
@@ -52,7 +65,7 @@ namespace T4TemplateExample
             // Load the template content
             string templateContent = File.ReadAllText(templateFilePath);
 
-            // Replace placeholders in the template with actual values
+            // Replace placeholders in the template with actual property names
             foreach (var header in headers)
             {
                 templateContent = templateContent.Replace("<<PropertyName>>", header);
@@ -62,13 +75,12 @@ namespace T4TemplateExample
             return templateContent;
         }
 
-        static void PrintPropertyValues(string generatedCode, string propertyName)
+        static void PrintPropertyValues(string generatedCode, string propertyName, List<string> values)
         {
-            // Print all occurrences of the property name in the generated code
             Console.WriteLine($"Values of property '{propertyName}':");
-            foreach (Match match in Regex.Matches(generatedCode, propertyName + @"=\s*([^;]+);"))
+            foreach (var value in values)
             {
-                Console.WriteLine(match.Groups[1].Value.Trim());
+                Console.WriteLine(value);
             }
         }
     }
