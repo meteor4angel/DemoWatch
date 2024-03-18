@@ -1,0 +1,85 @@
+using System;
+using System.CodeDom.Compiler;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Microsoft.CSharp;
+using System.Reflection;
+
+namespace T4TemplateExample
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Specify the filter column and values
+            string filterColumn = "Age";
+            string[] filterValues = { "30", "35" }; // Filter values to match
+
+            // Read and filter CSV file using T4 template
+            var filteredRows = ReadAndFilterCsvFile("data.csv", filterColumn, filterValues);
+
+            // Print filtered rows
+            foreach (var row in filteredRows)
+            {
+                Console.WriteLine($"Name: {row.Name}, Age: {row.Age}, Country: {row.Country}");
+            }
+        }
+
+        static List<CsvRow> ReadAndFilterCsvFile(string filePath, string filterColumn, string[] filterValues)
+        {
+            // Generate filtering logic using T4 template
+            string generatedCode = GenerateFilteringLogic(filterColumn, filterValues);
+
+            // Compile the generated code
+            Assembly assembly = CompileGeneratedCode(generatedCode);
+
+            // Execute the filtering logic
+            MethodInfo methodInfo = assembly.GetType("CsvData.CsvHelper").GetMethod("FilterRows");
+            List<CsvRow> filteredRows = (List<CsvRow>)methodInfo.Invoke(null, new object[] { filePath });
+
+            return filteredRows;
+        }
+
+        static string GenerateFilteringLogic(string filterColumn, string[] filterValues)
+        {
+            string templateContent = File.ReadAllText("CsvReaderTemplate.tt");
+
+            var session = new Dictionary<string, string[]>();
+            session["FilterColumn"] = new[] { filterColumn };
+            session["FilterValues"] = filterValues;
+
+            var host = new Microsoft.VisualStudio.TextTemplating.Engine();
+            string generatedCode = host.ProcessTemplate(templateContent, session);
+
+            return generatedCode;
+        }
+
+        static Assembly CompileGeneratedCode(string code)
+        {
+            var compilerParameters = new CompilerParameters
+            {
+                GenerateInMemory = true,
+                GenerateExecutable = false
+            };
+
+            compilerParameters.ReferencedAssemblies.Add("System.dll");
+
+            var compilerResults = new CSharpCodeProvider().CompileAssemblyFromSource(compilerParameters, code);
+
+            if (compilerResults.Errors.HasErrors)
+            {
+                throw new Exception("Compilation failed.");
+            }
+
+            return compilerResults.CompiledAssembly;
+        }
+    }
+
+    public class CsvRow
+    {
+        public string Name { get; set; }
+        public string Age { get; set; }
+        public string Country { get; set; }
+    }
+}
