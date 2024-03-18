@@ -1,0 +1,88 @@
+using System;
+using System.IO;
+using Microsoft.VisualStudio.TextTemplating;
+
+namespace T4TemplateExample
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string csvFilePath = Path.Combine(currentDirectory, "data.csv");
+            string t4TemplateFilePath = "CsvReaderTemplate.tt";
+
+            // Read CSV file to get column headers
+            string[] headers = GetCsvHeaders(csvFilePath);
+
+            // Check if a property name exists
+            string propertyNameToCheck = "Age";
+            bool propertyNameExists = Array.Exists(headers, header => header.Trim().Equals(propertyNameToCheck, StringComparison.OrdinalIgnoreCase));
+            Console.WriteLine($"Property '{propertyNameToCheck}' {(propertyNameExists ? "exists" : "does not exist")} in the CSV file.");
+
+            // Programmatically trigger the transformation of the T4 template file
+            string generatedCode = TransformT4Template(t4TemplateFilePath, headers);
+
+            // Print values of the property if it exists
+            if (propertyNameExists)
+            {
+                PrintPropertyValues(generatedCode, propertyNameToCheck);
+            }
+            else
+            {
+                Console.WriteLine($"Property '{propertyNameToCheck}' does not exist in the CSV file.");
+            }
+        }
+
+        static string[] GetCsvHeaders(string filePath)
+        {
+            // Read the first line of the CSV file to get the headers
+            string[] headers = null;
+            using (StreamReader reader = new StreamReader(filePath))
+            {
+                string headerLine = reader.ReadLine();
+                headers = headerLine.Split(',');
+            }
+            return headers;
+        }
+
+        static string TransformT4Template(string templateFilePath, string[] headers)
+        {
+            // Initialize the text transformation context
+            var transformation = new TextTransformation();
+
+            // Load the template content
+            string templateContent = File.ReadAllText(templateFilePath);
+            
+            // Set the template session
+            transformation.Session = new TextTemplatingSession();
+            transformation.Session["Headers"] = headers;
+
+            // Transform the template
+            transformation.Initialize();
+            transformation.TransformText();
+
+            // Return the output
+            return transformation.GenerationEnvironment.ToString();
+        }
+
+        static void PrintPropertyValues(string generatedCode, string propertyName)
+        {
+            // Split the generated code into lines
+            string[] lines = generatedCode.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+
+            // Iterate through the lines and find the property values
+            foreach (var line in lines)
+            {
+                if (line.Contains(propertyName))
+                {
+                    string[] parts = line.Split('=');
+                    if (parts.Length == 2)
+                    {
+                        Console.WriteLine(parts[1].Trim());
+                    }
+                }
+            }
+        }
+    }
+}
