@@ -117,3 +117,74 @@ namespace T4TemplateExample
         }
     }
 }
+
+
+
+
+
+
+
+
+
+class CustomTextTemplatingEngineHost : ITextTemplatingEngineHost
+    {
+        public string FileExtension => ".cs";
+        public Encoding Encoding => Encoding.UTF8;
+        public string TemplateFile { get; }
+        public string FileResult { get; private set; }
+        
+        public CustomTextTemplatingEngineHost(string templateFile)
+        {
+            TemplateFile = templateFile;
+        }
+
+        public string ResolvePath(string path)
+        {
+            return Path.GetFullPath(path);
+        }
+
+        public string ReadFile(string path)
+        {
+            return File.ReadAllText(path);
+        }
+
+        public void ErrorCallback(bool warning, string message, int line, int column)
+        {
+            Console.WriteLine($"{(warning ? "Warning" : "Error")} at {line}:{column}: {message}");
+        }
+
+        // Other members of ITextTemplatingEngineHost can be implemented as needed
+
+        // Sample method to process the template
+        public void ProcessTemplate()
+        {
+            // Create a template engine
+            var engine = new Engine();
+
+            // Process the template
+            FileResult = engine.ProcessTemplate(ReadFile(TemplateFile), this);
+
+            // Check for errors
+            if (!string.IsNullOrEmpty(engine.Errors))
+            {
+                ErrorCallback(false, engine.Errors, 0, 0);
+            }
+        }
+    }
+
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Instantiate the custom host
+            var host = new CustomTextTemplatingEngineHost("Template.tt");
+
+            // Process the template
+            host.ProcessTemplate();
+
+            // Print the result
+            Console.WriteLine("Generated code:");
+            Console.WriteLine(host.FileResult);
+        }
+    }
+}
