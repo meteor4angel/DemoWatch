@@ -1,0 +1,58 @@
+<#@ template language="C#" #>
+<#@ parameter type="System.String[]" name="FilterColumns" #>
+<#@ parameter type="System.String[]" name="FilterValues" #>
+
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Linq" #>
+
+<#
+    // Define the CSV file path
+    string csvFilePath = "Path/To/YourCsvFile.csv";
+
+    // Read the CSV file
+    string[] lines = File.ReadAllLines(csvFilePath);
+
+    // Extract header row and parse column names
+    string[] headers = lines.First().Split(',');
+    Dictionary<string, int> columnIndices = headers
+        .Select((name, index) => new { Name = name, Index = index })
+        .ToDictionary(x => x.Name, x => x.Index);
+
+    // Find indices of filter columns
+    int[] filterColumnIndices = new int[FilterColumns.Length];
+    for (int i = 0; i < FilterColumns.Length; i++)
+    {
+        if (!columnIndices.TryGetValue(FilterColumns[i], out filterColumnIndices[i]))
+        {
+            throw new ArgumentException($"Filter column '{FilterColumns[i]}' not found in CSV headers.");
+        }
+    }
+
+    // Filter rows based on filter columns and values
+    List<string[]> filteredRows = new List<string[]>();
+    foreach (string line in lines.Skip(1))
+    {
+        string[] values = line.Split(',');
+        bool matchesAllFilters = true;
+        for (int i = 0; i < FilterColumns.Length; i++)
+        {
+            if (values[filterColumnIndices[i]] != FilterValues[i])
+            {
+                matchesAllFilters = false;
+                break;
+            }
+        }
+        if (matchesAllFilters)
+        {
+            filteredRows.Add(values);
+        }
+    }
+
+    // Output filtered rows
+    foreach (string[] row in filteredRows)
+    {
+        WriteLine(string.Join(",", row));
+    }
+#>
