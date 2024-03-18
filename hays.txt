@@ -1,3 +1,44 @@
+<#@ template language="C#" #>
+<#@ output extension=".cs" #>
+<#@ parameter type="string[]" name="FilterColumn" #>
+<#@ parameter type="string[]" name="FilterValues" #>
+
+namespace CsvData
+{
+    public class CsvHelper
+    {
+        public static List<dynamic> FilterRows(string filePath)
+        {
+            var filteredRows = new List<dynamic>();
+
+            // Read CSV file and filter rows
+            using (var reader = new StreamReader(filePath))
+            {
+                // Skip header
+                reader.ReadLine();
+
+                while (!reader.EndOfStream)
+                {
+                    var values = reader.ReadLine().Split(',');
+                    // Check if value in filter column matches any of the filter values
+                    if (<#= FilterValues #>.Contains(values[<#= FilterColumn #>]))
+                    {
+                        // Create dynamic object for each row
+                        dynamic row = new ExpandoObject();
+                        row.Name = values[0];
+                        row.Age = values[1];
+                        row.Country = values[2];
+                        filteredRows.Add(row);
+                    }
+                }
+            }
+
+            return filteredRows;
+        }
+    }
+}
+
+
 using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
@@ -26,7 +67,7 @@ namespace T4TemplateExample
             }
         }
 
-        static List<CsvRow> ReadAndFilterCsvFile(string filePath, string filterColumn, string[] filterValues)
+        static List<dynamic> ReadAndFilterCsvFile(string filePath, string filterColumn, string[] filterValues)
         {
             // Generate filtering logic using T4 template
             string generatedCode = GenerateFilteringLogic(filterColumn, filterValues);
@@ -36,7 +77,7 @@ namespace T4TemplateExample
 
             // Execute the filtering logic
             MethodInfo methodInfo = assembly.GetType("CsvData.CsvHelper").GetMethod("FilterRows");
-            List<CsvRow> filteredRows = (List<CsvRow>)methodInfo.Invoke(null, new object[] { filePath });
+            List<dynamic> filteredRows = (List<dynamic>)methodInfo.Invoke(null, new object[] { filePath });
 
             return filteredRows;
         }
@@ -74,12 +115,5 @@ namespace T4TemplateExample
 
             return compilerResults.CompiledAssembly;
         }
-    }
-
-    public class CsvRow
-    {
-        public string Name { get; set; }
-        public string Age { get; set; }
-        public string Country { get; set; }
     }
 }
