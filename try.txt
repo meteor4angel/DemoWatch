@@ -1,0 +1,328 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Moq;
+
+public static class DbContextMockHelper
+{
+    public static Mock<DbSet<TEntity>> CreateDbSetMock<TEntity>(IEnumerable<TEntity> data)
+        where TEntity : class
+    {
+        var queryable = data.AsQueryable();
+        var dbSetMock = new Mock<DbSet<TEntity>>();
+
+        dbSetMock.As<IAsyncEnumerable<TEntity>>()
+                 .Setup(m => m.GetAsyncEnumerator(It.IsAny<CancellationToken>()))
+                 .Returns(new TestAsyncEnumerator<TEntity>(queryable.GetEnumerator()));
+
+        dbSetMock.As<IQueryable<TEntity>>()
+                 .Setup(m => m.Provider)
+                 .Returns(new TestAsyncQueryProvider<TEntity>(queryable.Provider));
+
+        dbSetMock.As<IQueryable<TEntity>>().Setup(m => m.Expression).Returns(queryable.Expression);
+        dbSetMock.As<IQueryable<TEntity>>().Setup(m => m.ElementType).Returns(queryable.ElementType);
+        dbSetMock.As<IQueryable<TEntity>>().Setup(m => m.GetEnumerator()).Returns(queryable.GetEnumerator());
+
+        return dbSetMock;
+    }
+
+    public static Mock<DbContext> CreateDbContextMock<TEntity>(
+        Mock<DbSet<TEntity>> dbSetMock,
+        DbContextOptions options = null)
+        where TEntity : class
+    {
+        var dbContextMock = new Mock<DbContext>(options);
+        dbContextMock.Setup(c => c.Set<TEntity>()).Returns(dbSetMock.Object);
+
+        return dbContextMock;
+    }
+
+    public static async Task<TEntity> GetEntityAsync<TEntity>(
+        IEnumerable<TEntity> data,
+        Expression<Func<TEntity, bool>> predicate)
+        where TEntity : class
+    {
+        return data.AsQueryable().FirstOrDefault(predicate);
+    }
+
+    public static async Task<int> SaveChangesAsync<TEntity>(
+        IEnumerable<TEntity> data,
+        TEntity entity,
+        Mock<DbSet<TEntity>> dbSetMock,
+        int returnValue = 1)
+        where TEntity : class
+    {
+        dbSetMock.Setup(m => m.Add(entity)).Callback<TEntity>(data.Add);
+        dbSetMock.Setup(m => m.Remove(entity)).Callback<TEntity>(data.Remove);
+        dbSetMock.Setup(m => m.Update(entity)).Callback<TEntity>(data.Update);
+
+        return returnValue; // Return the desired return value
+    }
+
+    // Define other common operations like Find, Add, Update, Remove, etc. as needed
+}
+
+// Helper classes for mocking async operations
+
+public class TestAsyncEnumerable<T> : IAsyncEnumerable<T>
+{
+    private readonly IEnumerable<T> _enumerable;
+
+    public TestAsyncEnumerable(IEnumerable<T> enumerable)
+    {
+        _enumerable = enumerable;
+    }
+
+    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        return new TestAsyncEnumerator<T>(_enumerable.GetEnumerator());
+    }
+}
+
+public class TestAsyncEnumerator<T> : IAsyncEnumerator<T>
+{
+    private readonly IEnumerator<T> _enumerator;
+
+    public TestAsyncEnumerator(IEnumerator<T> enumerator)
+    {
+        _enumerator = enumerator;
+    }
+
+    public ValueTask<bool> MoveNextAsync()
+    {
+        return new ValueTask<bool>(_enumerator.MoveNext());
+    }
+
+    public T Current => _enumerator.Current;
+
+    public ValueTask DisposeAsync()
+    {
+        _enumerator.Dispose();
+        return default;
+    }
+}
+
+public class TestAsyncQueryProvider<TEntity> : IAsyncQueryProvider
+{
+    private readonly IQueryProvider _inner;
+
+    internal TestAsyncQueryProvider(IQueryProvider inner)
+    {
+        _inner = inner;
+    }
+
+    public IQueryable CreateQuery(Expression expression)
+    {
+        return new TestAsyncEnumerable<TEntity>(expression);
+    }
+
+    public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
+    {
+        return new TestAsyncEnumerable<TElement>(expression);
+    }
+
+    public object Execute(Expression expression)
+    {
+        return _inner.Execute(expression);
+    }
+
+    public TResult Execute<TResult>(Expression expression)
+    {
+        return _inner.Execute<TResult>(expression);
+    }
+
+    public IAsyncEnumerable<TResult> ExecuteAsync<TResult>(Expression expression)
+    {
+        throw new NotImplementedException();
+    }
+
+    public TResult ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+using System.Threading.Tasks;
+using Moq;
+using Xunit;
+
+public class ProductRepositoryTests
+{
+    [Fact]
+    public async Task GetByIdAsync_Returns_Product_When_Found()
+    {
+        // Arrange
+        var mockProduct = new Product { Id = 1, Name = "Test Product", Price = 10.99m };
+        var mockDbSet = DbContextMockHelper.CreateDbSetMock(new[] { mockProduct });
+        var mockDbContext = DbContextMockHelper.CreateDbContextMock(mockDbSet);
+        var repository = new ProductRepository(mockDbContext.Object);
+
+        // Act
+        var result = await repository.GetByIdAsync(1);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(mockProduct.Id, result.Id);
+        Assert.Equal(mockProduct.Name, result.Name);
+        Assert.Equal(mockProduct.Price, result.Price);
+    }
+
+    [Fact]
+    public async Task AddAsync_Adds_New_Product()
+    {
+        // Arrange
+        var mockDbSet = DbContextMockHelper.CreateDbSetMock(new List<Product>());
+        var mockDbContext = DbContextMockHelper.CreateDbContextMock(mockDbSet);
+        var repository = new ProductRepository(mockDbContext.Object);
+        var newProduct = new Product { Id = 1, Name = "New Product", Price = 20.99m };
+
+        // Act
+        await repository.AddAsync(newProduct);
+
+        // Assert
+        mockDbSet.Verify(m => m.Add(newProduct), Times.Once);
+        mockDbContext.Verify(m => m.SaveChangesAsync(default), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Updates_Existing_Product()
+    {
+        // Arrange
+        var mockProduct = new Product { Id = 1, Name = "Existing Product", Price = 30.99m };
+        var mockDbSet = DbContextMockHelper.CreateDbSetMock(new[] { mockProduct });
+        var mockDbContext = DbContextMockHelper.CreateDbContextMock(mockDbSet);
+        var repository = new ProductRepository(mockDbContext.Object);
+        var updatedProduct = new Product { Id = 1, Name = "Updated Product", Price = 40.99m };
+
+        // Act
+        await repository.UpdateAsync(updatedProduct);
+
+        // Assert
+        mockDbSet.Verify(m => m.Update(updatedProduct), Times.Once);
+        mockDbContext.Verify(m => m.SaveChangesAsync(default), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_Deletes_Existing_Product()
+    {
+        // Arrange
+        var mockProduct = new Product { Id = 1, Name = "Existing Product", Price = 30.99m };
+        var mockDbSet = DbContextMockHelper.CreateDbSetMock(new[] { mockProduct });
+        var mockDbContext = DbContextMockHelper.CreateDbContextMock(mockDbSet);
+        var repository = new ProductRepository(mockDbContext.Object);
+
+        // Act
+        await repository.DeleteAsync(mockProduct);
+
+        // Assert
+        mockDbSet.Verify(m => m.Remove(mockProduct), Times.Once);
+        mockDbContext.Verify(m => m.SaveChangesAsync(default), Times.Once);
+    }
+}
+
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Moq;
+
+public static class DbContextMockHelper
+{
+    public static Mock<DbSet<TEntity>> CreateDbSetMock<TEntity>(IEnumerable<TEntity> data)
+        where TEntity : class
+    {
+        var queryable = data.AsQueryable();
+        var dbSetMock = new Mock<DbSet<TEntity>>();
+
+        dbSetMock.As<IAsyncEnumerable<TEntity>>()
+                 .Setup(m => m.GetAsyncEnumerator(It.IsAny<CancellationToken>()))
+                 .Returns(new TestAsyncEnumerator<TEntity>(queryable.GetEnumerator()));
+
+        dbSetMock.As<IQueryable<TEntity>>()
+                 .Setup(m => m.Provider)
+                 .Returns(new TestAsyncQueryProvider<TEntity>(queryable.Provider));
+
+        dbSetMock.As<IQueryable<TEntity>>().Setup(m => m.Expression).Returns(queryable.Expression);
+        dbSetMock.As<IQueryable<TEntity>>().Setup(m => m.ElementType).Returns(queryable.ElementType);
+        dbSetMock.As<IQueryable<TEntity>>().Setup(m => m.GetEnumerator()).Returns(queryable.GetEnumerator());
+
+        return dbSetMock;
+    }
+
+    public static Mock<DbContext> CreateDbContextMock<TEntity>(
+        Mock<DbSet<TEntity>> dbSetMock,
+        DbContextOptions options = null)
+        where TEntity : class
+    {
+        var dbContextMock = new Mock<DbContext>(options);
+        dbContextMock.Setup(c => c.Set<TEntity>()).Returns(dbSetMock.Object);
+
+        return dbContextMock;
+    }
+
+    public static async Task<TEntity> GetEntityAsync<TEntity>(
+        IEnumerable<TEntity> data,
+        Expression<Func<TEntity, bool>> predicate)
+        where TEntity : class
+    {
+        return data.AsQueryable().FirstOrDefault(predicate);
+    }
+
+    public static async Task<int> SaveChangesAsync<TEntity>(
+        IEnumerable<TEntity> data,
+        TEntity entity,
+        Mock<DbSet<TEntity>> dbSetMock,
+        int returnValue = 1)
+        where TEntity : class
+    {
+        dbSetMock.Setup(m => m.Add(entity)).Callback<TEntity>(data.Add);
+        dbSetMock.Setup(m => m.Remove(entity)).Callback<TEntity>(data.Remove);
+        dbSetMock.Setup(m => m.Update(entity)).Callback<TEntity>(data.Update);
+
+        return returnValue; // Return the desired return value
+    }
+
+    public static TEntity Find<TEntity>(
+        IEnumerable<TEntity> data,
+        params object[] keyValues)
+        where TEntity : class
+    {
+        var entityType = typeof(TEntity);
+        var keyProperties = GetKeyProperties<TEntity>();
+
+        var query = data.AsQueryable();
+
+        foreach (var keyValue in keyValues)
+        {
+            var keyValueParam = keyValue;
+            query = query.Where(entity =>
+                keyProperties.Select(property =>
+                    entityType.GetProperty(property)).All(property =>
+                        Equals(property.GetValue(entity), keyValueParam)));
+        }
+
+        return query.FirstOrDefault();
+    }
+
+    private static IEnumerable<string> GetKeyProperties<TEntity>()
+        where TEntity : class
+    {
+        var entityType = typeof(TEntity);
+        var dbContext = new DbContext(new DbContextOptionsBuilder().Options);
+        var entity = dbContext.Model.FindEntityType(entityType);
+        return entity.FindPrimaryKey().Properties.Select(x => x.Name);
+    }
+}
+
+// Other helper classes omitted for brevity...
+
+
+
