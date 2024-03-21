@@ -1,0 +1,94 @@
+using System;
+using System.Linq;
+using System.Reflection;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Filters;
+
+public class SampleResponseGenerator
+{
+    private readonly IServiceProvider _serviceProvider;
+
+    public SampleResponseGenerator(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+    }
+
+    public object GenerateSampleResponseForController(Type controllerType)
+    {
+        // Check if the provided type is a controller
+        if (!typeof(ControllerBase).IsAssignableFrom(controllerType))
+        {
+            throw new ArgumentException("The provided type is not a controller.", nameof(controllerType));
+        }
+
+        // Get public methods of the controller that are decorated with HTTP method attributes
+        var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m.GetCustomAttributes(typeof(HttpMethodAttribute), false).Any());
+
+        var sampleResponses = methods.Select(m => GenerateSampleResponseForMethod(controllerType, m)).ToList();
+
+        return sampleResponses;
+    }
+
+    private object GenerateSampleResponseForMethod(Type controllerType, MethodInfo method)
+    {
+        // Resolve the controller instance using dependency injection
+        var controllerInstance = _serviceProvider.GetService(controllerType);
+
+        // Create a ControllerContext
+        var controllerContext = new ControllerContext()
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext(),
+            RouteData = new Microsoft.AspNetCore.Routing.RouteData(),
+            ActionDescriptor = new ControllerActionDescriptor()
+            {
+                ControllerTypeInfo = controllerType.GetTypeInfo(),
+                MethodInfo = method,
+            }
+        };
+
+        // Set the controller instance in the ControllerContext
+        controllerContext.Controller = controllerInstance;
+
+        // Create an ActionExecutingContext
+        var actionExecutingContext = new ActionExecutingContext(
+            controllerContext,
+            new IFilterMetadata[0],
+            new object() // Model
+        );
+
+        // Invoke the action method using the MVC pipeline
+        var actionResult = new ControllerActionInvoker().InvokeActionAsync(actionExecutingContext, method).GetAwaiter().GetResult();
+
+        // Process the action result to get the response
+        if (actionResult is ObjectResult objectResult)
+        {
+            return objectResult.Value;
+        }
+        else if (actionResult is ContentResult contentResult)
+        {
+            return contentResult.Content;
+        }
+        // Add other checks for different types of action results as needed
+
+        // Return null if unable to generate a sample response
+        return null;
+    }
+}
+
+
+// Assuming you have an instance of IServiceProvider available, such as in an ASP.NET Core application
+IServiceProvider serviceProvider = ...; // Obtain IServiceProvide instance from DI container
+
+// Create an instance of SampleResponseGenerator
+var sampleResponseGenerator = new SampleResponseGenerator(serviceProvider);
+
+// Specify the controller type for which you want to generate sample responses
+Type controllerType = typeof(YourController); // Replace YourController with the actual controller type
+
+// Generate sample responses for the specified controller
+object sampleResponses = sampleResponseGenerator.GenerateSampleResponseForController(controllerType);
+
+// Now you can use the sampleResponses object as needed
+// For example, you can serialize it to JSON and return it from an API endpoint
