@@ -15,90 +15,18 @@ public class ApiMethodInfo
 
 public static class ApiMethodInfoGenerator
 {
-    public static List<ApiMethodInfo> GenerateApiMethodInfo()
-    {
-        var apiMethodInfoList = new List<ApiMethodInfo>();
-
-        var assembly = Assembly.GetExecutingAssembly();
-        var controllerTypes = assembly.GetTypes().Where(t => typeof(ControllerBase).IsAssignableFrom(t));
-
-        foreach (var controllerType in controllerTypes)
-        {
-            var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                                        .Where(m => m.GetCustomAttributes(typeof(HttpGetAttribute), false).Any() ||
-                                                    m.GetCustomAttributes(typeof(HttpPostAttribute), false).Any() ||
-                                                    m.GetCustomAttributes(typeof(HttpPutAttribute), false).Any() ||
-                                                    m.GetCustomAttributes(typeof(HttpDeleteAttribute), false).Any());
-
-            foreach (var method in methods)
-            {
-                var httpMethods = method.GetCustomAttributes<HttpMethodAttribute>().Select(attr => attr.HttpMethods);
-
-                foreach (var httpMethod in httpMethods)
-                {
-                    var route = method.GetCustomAttributes<RouteAttribute>().FirstOrDefault()?.Template;
-                    var returnType = method.ReturnType;
-
-                    // Generate sample response based on return type
-                    var sampleResponse = GenerateSampleResponse(returnType);
-
-                    apiMethodInfoList.Add(new ApiMethodInfo
-                    {
-                        HttpMethod = string.Join(",", httpMethod),
-                        Route = route,
-                        SampleResponse = sampleResponse
-                    });
-                }
-            }
-        }
-
-        return apiMethodInfoList;
-    }
-
-private static object GenerateSampleResponse(Type returnType)
+   private static object GenerateSampleResponseForIActionResult(MethodInfo method)
 {
-    // Check if the return type is IActionResult
-    if (returnType == typeof(IActionResult))
-    {
-        // Return a placeholder message indicating that the API method returns IActionResult
-        return GenerateSampleResponseForIActionResult();
-    }
-    // If the return type is Task<IActionResult>, handle the inner result type
-    else if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
-    {
-        var taskInnerType = returnType.GetGenericArguments()[0];
-        return GenerateSampleResponse(taskInnerType);
-    }
-    else if (returnType.IsValueType || returnType == typeof(string))
-    {
-        // For value types and strings, return an instance of the type
-        return Activator.CreateInstance(returnType);
-    }
-    else if (returnType.IsClass)
-    {
-        // For reference types, recursively generate a sample instance and initialize its properties
-        var instance = Activator.CreateInstance(returnType);
-        foreach (var property in returnType.GetProperties())
-        {
-            property.SetValue(instance, GenerateSampleResponse(property.PropertyType));
-        }
-        return instance;
-    }
-    else
-    {
-        // Unable to generate sample response for other types
-        return null;
-    }
-}
+    // Create an instance of the controller
+    var controllerInstance = Activator.CreateInstance(method.DeclaringType);
 
-private static object GenerateSampleResponseForIActionResult()
-{
     // Create a mock controller context for executing the action
     var controllerContext = new ControllerContext();
     var actionContext = new ActionContext(controllerContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
 
-    // Execute the action
-    var actionResult = YourApiController.YourActionMethod() as IActionResult; // Call your API method here
+    // Invoke the action method
+    var actionResult = method.Invoke(controllerInstance, null) as IActionResult;
+
     if (actionResult != null)
     {
         // Execute the action result to get the response
@@ -119,6 +47,46 @@ private static object GenerateSampleResponseForIActionResult()
     // Return null if unable to generate a sample response
     return null;
 }
+
+public static List<ApiMethodInfo> GenerateApiMethodInfo()
+{
+    var apiMethodInfoList = new List<ApiMethodInfo>();
+
+    var assembly = Assembly.GetExecutingAssembly();
+    var controllerTypes = assembly.GetTypes().Where(t => typeof(ControllerBase).IsAssignableFrom(t));
+
+    foreach (var controllerType in controllerTypes)
+    {
+        var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                                    .Where(m => m.GetCustomAttributes(typeof(HttpGetAttribute), false).Any() ||
+                                                m.GetCustomAttributes(typeof(HttpPostAttribute), false).Any() ||
+                                                m.GetCustomAttributes(typeof(HttpPutAttribute), false).Any() ||
+                                                m.GetCustomAttributes(typeof(HttpDeleteAttribute), false).Any());
+
+        foreach (var method in methods)
+        {
+            var httpMethods = method.GetCustomAttributes<HttpMethodAttribute>().Select(attr => attr.HttpMethods);
+
+            foreach (var httpMethod in httpMethods)
+            {
+                var route = method.GetCustomAttributes<RouteAttribute>().FirstOrDefault()?.Template;
+
+                // Generate sample response
+                var sampleResponse = GenerateSampleResponseForIActionResult(method);
+
+                apiMethodInfoList.Add(new ApiMethodInfo
+                {
+                    HttpMethod = string.Join(",", httpMethod),
+                    Route = route,
+                    SampleResponse = sampleResponse
+                });
+            }
+        }
+    }
+
+    return apiMethodInfoList;
+}
+
 
 }
 
