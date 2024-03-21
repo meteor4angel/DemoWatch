@@ -73,15 +73,16 @@ class Program
         }
 
 
-
-
-
-
-
-   static T InstantiateClass<T>()
+ static void Main(string[] args)
     {
-        Type type = typeof(T);
-        T instance = (T)Activator.CreateInstance(type);
+        // Example usage:
+        var myClassInstance = (MyClass)InstantiateClass(typeof(MyClass));
+        Console.WriteLine(myClassInstance);
+    }
+
+    static object InstantiateClass(Type type)
+    {
+        object instance = Activator.CreateInstance(type);
 
         foreach (var property in type.GetProperties())
         {
