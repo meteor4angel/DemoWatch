@@ -5,6 +5,11 @@ using System.Linq;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Linq;
 
 public class ApiMethodInfo
 {
@@ -15,96 +20,85 @@ public class ApiMethodInfo
 
 public static class ApiMethodInfoGenerator
 {
-   private static object GenerateSampleResponseForIActionResult(MethodInfo method, HttpContext httpContext)
-{
-    // Create an instance of the controller
-    var controllerInstance = Activator.CreateInstance(method.DeclaringType);
-
-    // Create an ActionContext
-    var actionContext = new ActionContext(httpContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
-
-    // Invoke the action method
-    var actionResult = method.Invoke(controllerInstance, new object[] { }) as IActionResult;
-
-    if (actionResult != null)
+    public static List<ApiMethodInfo> GenerateApiMethodInfo(IServiceProvider serviceProvider)
     {
-        // Execute the action result asynchronously to get the response
-        var task = Task.Run(async () =>
+        var apiMethodInfoList = new List<ApiMethodInfo>();
+
+        var assembly = Assembly.GetExecutingAssembly();
+        var controllerTypes = assembly.GetTypes().Where(t => typeof(ControllerBase).IsAssignableFrom(t));
+
+        foreach (var controllerType in controllerTypes)
         {
-            // Execute the action result asynchronously
-            await actionResult.ExecuteResultAsync(actionContext);
-        });
+            var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                                        .Where(m => m.GetCustomAttributes(typeof(HttpGetAttribute), false).Any() ||
+                                                    m.GetCustomAttributes(typeof(HttpPostAttribute), false).Any() ||
+                                                    m.GetCustomAttributes(typeof(HttpPutAttribute), false).Any() ||
+                                                    m.GetCustomAttributes(typeof(HttpDeleteAttribute), false).Any());
 
-        // Wait for the task to complete and then return the sample response
-        task.Wait();
-
-        if (actionResult is ObjectResult objectResult)
-        {
-            // If the result is ObjectResult, return the value as sample response
-            return objectResult.Value;
-        }
-        else if (actionResult is ContentResult contentResult)
-        {
-            // If the result is ContentResult, return the content as sample response
-            return contentResult.Content;
-        }
-        // Add other checks for different types of action results as needed
-    }
-
-    // Return null if unable to generate a sample response
-    return null;
-}
-
-
-public static List<ApiMethodInfo> GenerateApiMethodInfo()
-{
-    var apiMethodInfoList = new List<ApiMethodInfo>();
-
-    var assembly = Assembly.GetExecutingAssembly();
-    var controllerTypes = assembly.GetTypes().Where(t => typeof(ControllerBase).IsAssignableFrom(t));
-
-    foreach (var controllerType in controllerTypes)
-    {
-        var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                                    .Where(m => m.GetCustomAttributes(typeof(HttpGetAttribute), false).Any() ||
-                                                m.GetCustomAttributes(typeof(HttpPostAttribute), false).Any() ||
-                                                m.GetCustomAttributes(typeof(HttpPutAttribute), false).Any() ||
-                                                m.GetCustomAttributes(typeof(HttpDeleteAttribute), false).Any());
-
-        foreach (var method in methods)
-        {
-            var httpMethods = method.GetCustomAttributes<HttpMethodAttribute>().Select(attr => attr.HttpMethods);
-
-            foreach (var httpMethod in httpMethods)
+            foreach (var method in methods)
             {
-                var route = method.GetCustomAttributes<RouteAttribute>().FirstOrDefault()?.Template;
+                var httpMethods = method.GetCustomAttributes<HttpMethodAttribute>().Select(attr => attr.HttpMethods);
 
-                // Generate sample response
-                var sampleResponse = GenerateSampleResponseForIActionResult(method);
-
-                apiMethodInfoList.Add(new ApiMethodInfo
+                foreach (var httpMethod in httpMethods)
                 {
-                    HttpMethod = string.Join(",", httpMethod),
-                    Route = route,
-                    SampleResponse = sampleResponse
-                });
+                    var route = method.GetCustomAttributes<RouteAttribute>().FirstOrDefault()?.Template;
+
+                    // Generate sample response
+                    var sampleResponse = GenerateSampleResponseForIActionResult(method, serviceProvider);
+
+                    apiMethodInfoList.Add(new ApiMethodInfo
+                    {
+                        HttpMethod = string.Join(",", httpMethod),
+                        Route = route,
+                        SampleResponse = sampleResponse
+                    });
+                }
             }
         }
+
+        return apiMethodInfoList;
     }
 
-    return apiMethodInfoList;
-}
-
-
-}
-
-public class Program
-{
-    public static void Main(string[] args)
+    private static object GenerateSampleResponseForIActionResult(MethodInfo method, IServiceProvider serviceProvider)
     {
-        var apiMethodInfoList = ApiMethodInfoGenerator.GenerateApiMethodInfo();
+        // Resolve the controller instance using dependency injection
+        var controllerType = method.DeclaringType;
+        var controllerInstance = serviceProvider.GetService(controllerType);
 
-        var json = JsonConvert.SerializeObject(apiMethodInfoList, Formatting.Indented);
-        File.WriteAllText("api_methods_info.json", json);
+        if (controllerInstance == null)
+        {
+            throw new InvalidOperationException($"Failed to resolve controller {controllerType.Name} from the service provider.");
+        }
+
+        // Invoke the action method
+        var actionResult = method.Invoke(controllerInstance, null) as IActionResult;
+
+        if (actionResult != null)
+        {
+            // Execute the action result to get the response
+            var result = actionResult.ExecuteResultAsync(CreateActionContext(controllerInstance)).Result;
+            if (result is ObjectResult objectResult)
+            {
+                // If the result is ObjectResult, return the value as sample response
+                return objectResult.Value;
+            }
+            else if (result is ContentResult contentResult)
+            {
+                // If the result is ContentResult, return the content as sample response
+                return contentResult.Content;
+            }
+            // Add other checks for different types of action results as needed
+        }
+
+        // Return null if unable to generate a sample response
+        return null;
+    }
+
+    private static ActionContext CreateActionContext(object controllerInstance)
+    {
+        var controllerContext = new ControllerContext();
+        var actionContext = new ActionContext(controllerContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
+        actionContext.Controller = (ControllerBase)controllerInstance;
+        return actionContext;
     }
 }
