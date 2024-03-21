@@ -88,35 +88,32 @@ private static object GenerateSampleResponseForIActionResult(MethodInfo method, 
     // Create an instance of the controller
     var controllerInstance = Activator.CreateInstance(controllerType, resolvedParameters.ToArray());
 
-    // Create a ControllerContext
-    var controllerContext = new ControllerContext()
+    // Create a new HttpContext associated with the controller instance
+    var controllerHttpContext = new DefaultHttpContext
     {
-        HttpContext = httpContext,
-        RouteData = new Microsoft.AspNetCore.Routing.RouteData(),
-        ActionDescriptor = new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor(),
+        RequestServices = serviceProvider,
+        User = httpContext.User // You may need to copy other properties from the original HttpContext as needed
     };
 
-    // Set the controller instance in the ActionContext
-    controllerContext.Controller = (ControllerBase)controllerInstance;
+    // Set up route data and action descriptor
+    var routeData = new RouteData();
+    var actionDescriptor = new ControllerActionDescriptor();
 
-    // Create an ActionContext
-    var actionContext = new ActionContext(controllerContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
+    // Create an ActionContext associated with the controller instance
+    var actionContext = new ActionContext(controllerHttpContext, routeData, actionDescriptor);
 
     // Invoke the action method
     var actionResult = method.Invoke(controllerInstance, null) as IActionResult;
 
+    // Process the action result to get the response
     if (actionResult != null)
     {
-        // Execute the action result to get the response
-        var result = actionResult.ExecuteResultAsync(actionContext).Result;
-        if (result is ObjectResult objectResult)
+        if (actionResult is ObjectResult objectResult)
         {
-            // If the result is ObjectResult, return the value as sample response
             return objectResult.Value;
         }
-        else if (result is ContentResult contentResult)
+        else if (actionResult is ContentResult contentResult)
         {
-            // If the result is ContentResult, return the content as sample response
             return contentResult.Content;
         }
         // Add other checks for different types of action results as needed
@@ -125,6 +122,7 @@ private static object GenerateSampleResponseForIActionResult(MethodInfo method, 
     // Return null if unable to generate a sample response
     return null;
 }
+
 
 
 }
