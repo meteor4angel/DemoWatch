@@ -6,19 +6,18 @@ using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 
-public class ResponseInfo
+public class ApiMethodInfo
 {
     public string HttpMethod { get; set; }
     public string Route { get; set; }
-    public int StatusCode { get; set; }
-    public Type ResponseType { get; set; }
+    public object SampleResponse { get; set; }
 }
 
-public static class ResponseInfoGenerator
+public static class ApiMethodInfoGenerator
 {
-    public static List<ResponseInfo> GenerateResponseInfo()
+    public static List<ApiMethodInfo> GenerateApiMethodInfo()
     {
-        var responseInfoList = new List<ResponseInfo>();
+        var apiMethodInfoList = new List<ApiMethodInfo>();
 
         var assembly = Assembly.GetExecutingAssembly();
         var controllerTypes = assembly.GetTypes().Where(t => typeof(ControllerBase).IsAssignableFrom(t));
@@ -38,28 +37,44 @@ public static class ResponseInfoGenerator
                 foreach (var httpMethod in httpMethods)
                 {
                     var route = method.GetCustomAttributes<RouteAttribute>().FirstOrDefault()?.Template;
+                    var returnType = method.ReturnType;
 
-                    var responseType = method.ReturnType;
+                    // Generate sample response based on return type
+                    var sampleResponse = GenerateSampleResponse(returnType);
 
-                    var statusCodes = method.GetCustomAttributes<ProducesResponseTypeAttribute>()
-                                            .Select(attr => attr.StatusCode)
-                                            .Distinct();
-
-                    foreach (var statusCode in statusCodes)
+                    apiMethodInfoList.Add(new ApiMethodInfo
                     {
-                        responseInfoList.Add(new ResponseInfo
-                        {
-                            HttpMethod = string.Join(",", httpMethod),
-                            Route = route,
-                            StatusCode = statusCode,
-                            ResponseType = responseType
-                        });
-                    }
+                        HttpMethod = string.Join(",", httpMethod),
+                        Route = route,
+                        SampleResponse = sampleResponse
+                    });
                 }
             }
         }
 
-        return responseInfoList;
+        return apiMethodInfoList;
+    }
+
+    private static object GenerateSampleResponse(Type returnType)
+    {
+        // Generate sample response based on return type
+        if (returnType.IsValueType || returnType == typeof(string))
+        {
+            return Activator.CreateInstance(returnType);
+        }
+        else if (returnType.IsClass)
+        {
+            var instance = Activator.CreateInstance(returnType);
+            foreach (var property in returnType.GetProperties())
+            {
+                property.SetValue(instance, GenerateSampleResponse(property.PropertyType));
+            }
+            return instance;
+        }
+        else
+        {
+            return null; // Unable to generate sample response for other types
+        }
     }
 }
 
@@ -67,9 +82,9 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        var responseInfoList = ResponseInfoGenerator.GenerateResponseInfo();
+        var apiMethodInfoList = ApiMethodInfoGenerator.GenerateApiMethodInfo();
 
-        var json = JsonConvert.SerializeObject(responseInfoList, Formatting.Indented);
-        File.WriteAllText("responses.json", json);
+        var json = JsonConvert.SerializeObject(apiMethodInfoList, Formatting.Indented);
+        File.WriteAllText("api_methods_info.json", json);
     }
 }
