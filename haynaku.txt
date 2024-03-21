@@ -1,0 +1,50 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using Newtonsoft.Json;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Specify the directory containing your assemblies
+        string directoryPath = @"C:\Your\Directory\Path";
+
+        // Specify the namespace you want to include
+        string targetNamespace = "Your.Target.Namespace";
+
+        // Load all assemblies in the specified directory
+        var assemblies = Directory.GetFiles(directoryPath, "*.dll")
+            .Select(Assembly.LoadFrom);
+
+        // Iterate through each assembly
+        foreach (var assembly in assemblies)
+        {
+            // Iterate through types in the assembly
+            foreach (var type in assembly.GetTypes())
+            {
+                // Check if the type belongs to the target namespace
+                if (type.Namespace == targetNamespace)
+                {
+                    // Serialize the type to JSON and write to file
+                    SerializeTypeToJson(type);
+                }
+            }
+        }
+    }
+
+    static void SerializeTypeToJson(Type type)
+    {
+        // Create an instance of the type (optional)
+        var instance = Activator.CreateInstance(type);
+
+        // Serialize the type to JSON
+        string json = JsonConvert.SerializeObject(instance, Formatting.Indented);
+
+        // Write the JSON to a file
+        File.WriteAllText($"{type.Name}.json", json);
+
+        Console.WriteLine($"JSON file generated for {type.FullName}.");
+    }
+}
