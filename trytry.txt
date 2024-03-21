@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 
 public class ResponseInfo
@@ -19,45 +20,36 @@ public static class ResponseInfoGenerator
     {
         var responseInfoList = new List<ResponseInfo>();
 
-        // Get all types in the assembly
         var assembly = Assembly.GetExecutingAssembly();
-        var controllerTypes = assembly.GetTypes().Where(t => t.Name.EndsWith("Controller"));
+        var controllerTypes = assembly.GetTypes().Where(t => typeof(ControllerBase).IsAssignableFrom(t));
 
         foreach (var controllerType in controllerTypes)
         {
             var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                                        .Where(m => m.GetCustomAttributes(typeof(System.Web.Http.HttpGetAttribute), false).Length > 0 ||
-                                                    m.GetCustomAttributes(typeof(System.Web.Http.HttpPostAttribute), false).Length > 0 ||
-                                                    m.GetCustomAttributes(typeof(System.Web.Http.HttpPutAttribute), false).Length > 0 ||
-                                                    m.GetCustomAttributes(typeof(System.Web.Http.HttpDeleteAttribute), false).Length > 0);
+                                        .Where(m => m.GetCustomAttributes(typeof(HttpGetAttribute), false).Any() ||
+                                                    m.GetCustomAttributes(typeof(HttpPostAttribute), false).Any() ||
+                                                    m.GetCustomAttributes(typeof(HttpPutAttribute), false).Any() ||
+                                                    m.GetCustomAttributes(typeof(HttpDeleteAttribute), false).Any());
 
             foreach (var method in methods)
             {
-                var httpMethods = method.GetCustomAttributes(typeof(System.Web.Http.HttpMethodAttribute), false)
-                                        .OfType<System.Web.Http.HttpMethodAttribute>()
-                                        .Select(attr => attr.Method);
+                var httpMethods = method.GetCustomAttributes<HttpMethodAttribute>().Select(attr => attr.HttpMethods);
 
                 foreach (var httpMethod in httpMethods)
                 {
-                    var route = method.GetCustomAttributes(typeof(System.Web.Http.RouteAttribute), false)
-                                      .OfType<System.Web.Http.RouteAttribute>()
-                                      .FirstOrDefault()?.Template;
+                    var route = method.GetCustomAttributes<RouteAttribute>().FirstOrDefault()?.Template;
 
                     var responseType = method.ReturnType;
 
-                    var statusCodes = method.GetCustomAttributes(typeof(System.Web.Http.ActionResult), false)
-                                            .OfType<System.Web.Http.IApiResponseTypeMetadataProvider>()
-                                            .SelectMany(attr => attr.GetSupportedContentTypes(httpMethod))
-                                            .Select(System.Net.Http.Headers.MediaTypeHeaderValue.Parse)
-                                            .Where(mediaType => mediaType.MediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase))
-                                            .Select(mediaType => (int)mediaType.Parameters.FirstOrDefault(p => p.Name.Equals("status", StringComparison.OrdinalIgnoreCase))?.Value)
+                    var statusCodes = method.GetCustomAttributes<ProducesResponseTypeAttribute>()
+                                            .Select(attr => attr.StatusCode)
                                             .Distinct();
 
                     foreach (var statusCode in statusCodes)
                     {
                         responseInfoList.Add(new ResponseInfo
                         {
-                            HttpMethod = httpMethod.Method,
+                            HttpMethod = string.Join(",", httpMethod),
                             Route = route,
                             StatusCode = statusCode,
                             ResponseType = responseType
