@@ -71,3 +71,58 @@ class Program
 
             Console.WriteLine($"JSON file generated for: {classFile}");
         }
+
+
+
+
+
+
+
+   static T InstantiateClass<T>()
+    {
+        Type type = typeof(T);
+        T instance = (T)Activator.CreateInstance(type);
+
+        foreach (var property in type.GetProperties())
+        {
+            Type propertyType = property.PropertyType;
+
+            if (propertyType.IsClass && propertyType != typeof(string))
+            {
+                // Recursive call for complex types (excluding strings)
+                object propertyValue = InstantiateClass(propertyType);
+                property.SetValue(instance, propertyValue);
+            }
+            else if (propertyType.IsGenericType && propertyType.GetGenericTypeDefinition() == typeof(List<>))
+            {
+                // Handle list properties
+                Type listType = propertyType.GetGenericArguments()[0];
+                Type listTypeGenericType = typeof(List<>).MakeGenericType(listType);
+
+                // Create an instance of the list
+                var listInstance = (IList)Activator.CreateInstance(listTypeGenericType);
+
+                // Add some dummy values to the list
+                for (int i = 1; i <= 3; i++)
+                {
+                    object listItem = InstantiateClass(listType);
+                    listInstance.Add(listItem);
+                }
+
+                // Set the list property value
+                property.SetValue(instance, listInstance);
+            }
+            else
+            {
+                // Set primitive or string property values to defaults
+                property.SetValue(instance, GetDefaultValue(propertyType));
+            }
+        }
+
+        return instance;
+    }
+
+    static object GetDefaultValue(Type type)
+    {
+        return type.IsValueType ? Activator.CreateInstance(type) : null;
+    }
