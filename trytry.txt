@@ -56,26 +56,34 @@ public static class ApiMethodInfoGenerator
     }
 
     private static object GenerateSampleResponse(Type returnType)
+{
+    if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
     {
-        // Generate sample response based on return type
-        if (returnType.IsValueType || returnType == typeof(string))
-        {
-            return Activator.CreateInstance(returnType);
-        }
-        else if (returnType.IsClass)
-        {
-            var instance = Activator.CreateInstance(returnType);
-            foreach (var property in returnType.GetProperties())
-            {
-                property.SetValue(instance, GenerateSampleResponse(property.PropertyType));
-            }
-            return instance;
-        }
-        else
-        {
-            return null; // Unable to generate sample response for other types
-        }
+        // If the return type is Task<T>, return a sample response for T
+        var taskInnerType = returnType.GetGenericArguments()[0];
+        return GenerateSampleResponse(taskInnerType);
     }
+    else if (returnType.IsValueType || returnType == typeof(string))
+    {
+        // For value types and strings, return an instance of the type
+        return Activator.CreateInstance(returnType);
+    }
+    else if (returnType.IsClass)
+    {
+        // For reference types, recursively generate a sample instance and initialize its properties
+        var instance = Activator.CreateInstance(returnType);
+        foreach (var property in returnType.GetProperties())
+        {
+            property.SetValue(instance, GenerateSampleResponse(property.PropertyType));
+        }
+        return instance;
+    }
+    else
+    {
+        // Unable to generate sample response for other types
+        return null;
+    }
+}
 }
 
 public class Program
