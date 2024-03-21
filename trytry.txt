@@ -55,11 +55,17 @@ public static class ApiMethodInfoGenerator
         return apiMethodInfoList;
     }
 
-    private static object GenerateSampleResponse(Type returnType)
+private static object GenerateSampleResponse(Type returnType)
 {
-    if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+    // Check if the return type is IActionResult
+    if (returnType == typeof(IActionResult))
     {
-        // If the return type is Task<T>, return a sample response for T
+        // Return a placeholder message indicating that the API method returns IActionResult
+        return GenerateSampleResponseForIActionResult();
+    }
+    // If the return type is Task<IActionResult>, handle the inner result type
+    else if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+    {
         var taskInnerType = returnType.GetGenericArguments()[0];
         return GenerateSampleResponse(taskInnerType);
     }
@@ -84,6 +90,36 @@ public static class ApiMethodInfoGenerator
         return null;
     }
 }
+
+private static object GenerateSampleResponseForIActionResult()
+{
+    // Create a mock controller context for executing the action
+    var controllerContext = new ControllerContext();
+    var actionContext = new ActionContext(controllerContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
+
+    // Execute the action
+    var actionResult = YourApiController.YourActionMethod() as IActionResult; // Call your API method here
+    if (actionResult != null)
+    {
+        // Execute the action result to get the response
+        var result = actionResult.ExecuteResultAsync(actionContext).Result;
+        if (result is ObjectResult objectResult)
+        {
+            // If the result is ObjectResult, return the value as sample response
+            return objectResult.Value;
+        }
+        else if (result is ContentResult contentResult)
+        {
+            // If the result is ContentResult, return the content as sample response
+            return contentResult.Content;
+        }
+        // Add other checks for different types of action results as needed
+    }
+
+    // Return null if unable to generate a sample response
+    return null;
+}
+
 }
 
 public class Program
