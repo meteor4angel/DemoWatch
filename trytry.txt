@@ -58,8 +58,7 @@ public static class ApiMethodInfoGenerator
 
         return apiMethodInfoList;
     }
-
-    private static object GenerateSampleResponseForIActionResult(MethodInfo method, HttpContext httpContext, IServiceProvider serviceProvider)
+private static object GenerateSampleResponseForIActionResult(MethodInfo method, HttpContext httpContext, IServiceProvider serviceProvider)
 {
     // Resolve the controller instance using dependency injection
     var controllerType = method.DeclaringType;
@@ -89,11 +88,19 @@ public static class ApiMethodInfoGenerator
     // Create an instance of the controller
     var controllerInstance = Activator.CreateInstance(controllerType, resolvedParameters.ToArray());
 
-    // Create an ActionContext
-    var actionContext = new ActionContext(httpContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
+    // Create a ControllerContext
+    var controllerContext = new ControllerContext()
+    {
+        HttpContext = httpContext,
+        RouteData = new Microsoft.AspNetCore.Routing.RouteData(),
+        ActionDescriptor = new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor(),
+    };
 
-    // Set the controller instance in the actionContext
-    actionContext.Controller = (ControllerBase)controllerInstance;
+    // Set the controller instance in the ActionContext
+    controllerContext.Controller = (ControllerBase)controllerInstance;
+
+    // Create an ActionContext
+    var actionContext = new ActionContext(controllerContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
 
     // Invoke the action method
     var actionResult = method.Invoke(controllerInstance, null) as IActionResult;
@@ -118,5 +125,6 @@ public static class ApiMethodInfoGenerator
     // Return null if unable to generate a sample response
     return null;
 }
+
 
 }
