@@ -48,3 +48,26 @@ class Program
         Console.WriteLine($"JSON file generated for {type.FullName}.");
     }
 }
+
+{
+        // Specify the directory containing your class files
+        string directoryPath = @"C:\Your\Source\Directory";
+
+        // Get all class files (.cs files) in the directory
+        var classFiles = Directory.GetFiles(directoryPath, "*.cs");
+
+        // Iterate through each class file
+        foreach (var classFile in classFiles)
+        {
+            // Read the content of the class file
+            string fileContent = File.ReadAllText(classFile);
+
+            // Convert the class file content to JSON
+            string json = JsonConvert.SerializeObject(fileContent, Formatting.Indented);
+
+            // Write the JSON to a file with the same name as the class file, but with .json extension
+            string jsonFileName = Path.ChangeExtension(classFile, ".json");
+            File.WriteAllText(jsonFileName, json);
+
+            Console.WriteLine($"JSON file generated for: {classFile}");
+        }
