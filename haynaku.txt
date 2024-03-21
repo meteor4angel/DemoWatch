@@ -127,3 +127,59 @@ class Program
     {
         return type.IsValueType ? Activator.CreateInstance(type) : null;
     }
+
+
+
+ static void SetProperty(object obj, string propertyName, object value)
+    {
+        Type type = obj.GetType();
+        PropertyInfo property = type.GetProperty(propertyName);
+
+        if (property != null && property.CanWrite)
+        {
+            if (typeof(IEnumerable).IsAssignableFrom(property.PropertyType))
+            {
+                // If the property is an IEnumerable or IList, handle it as a collection
+                SetPropertyForCollection(obj, propertyName, value);
+            }
+            else if (property.PropertyType.IsClass && property.PropertyType != typeof(string))
+            {
+                // If the property is of a class type (excluding string), recursively call SetProperty
+                SetProperty(property.GetValue(obj), propertyName, value);
+            }
+            else
+            {
+                // Otherwise, set the property value
+                property.SetValue(obj, value);
+                Console.WriteLine($"Set {propertyName} to {value}");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"Property {propertyName} does not exist or is read-only");
+        }
+    }
+
+    static void SetPropertyForCollection(object obj, string propertyName, object value)
+    {
+        PropertyInfo property = obj.GetType().GetProperty(propertyName);
+        Type propertyType = property.PropertyType.GetGenericArguments().FirstOrDefault();
+
+        if (value is IEnumerable collection)
+        {
+            // Create an instance of the list type
+            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(propertyType));
+
+            // Iterate through each item in the collection and recursively set its properties
+            foreach (var item in collection)
+            {
+                var listItem = Activator.CreateInstance(propertyType);
+                SetProperty(listItem, propertyName, item);
+                list.Add(listItem);
+            }
+
+            // Set the property value to the created list
+            property.SetValue(obj, list);
+            Console.WriteLine($"Set {propertyName} to {value}");
+        }
+    }
