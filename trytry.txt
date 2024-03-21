@@ -15,28 +15,35 @@ public class ApiMethodInfo
 
 public static class ApiMethodInfoGenerator
 {
-   private static object GenerateSampleResponseForIActionResult(MethodInfo method)
+   private static object GenerateSampleResponseForIActionResult(MethodInfo method, HttpContext httpContext)
 {
     // Create an instance of the controller
     var controllerInstance = Activator.CreateInstance(method.DeclaringType);
 
-    // Create a mock controller context for executing the action
-    var controllerContext = new ControllerContext();
-    var actionContext = new ActionContext(controllerContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
+    // Create an ActionContext
+    var actionContext = new ActionContext(httpContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
 
     // Invoke the action method
-    var actionResult = method.Invoke(controllerInstance, null) as IActionResult;
+    var actionResult = method.Invoke(controllerInstance, new object[] { }) as IActionResult;
 
     if (actionResult != null)
     {
-        // Execute the action result to get the response
-        var result = actionResult.ExecuteResultAsync(actionContext).Result;
-        if (result is ObjectResult objectResult)
+        // Execute the action result asynchronously to get the response
+        var task = Task.Run(async () =>
+        {
+            // Execute the action result asynchronously
+            await actionResult.ExecuteResultAsync(actionContext);
+        });
+
+        // Wait for the task to complete and then return the sample response
+        task.Wait();
+
+        if (actionResult is ObjectResult objectResult)
         {
             // If the result is ObjectResult, return the value as sample response
             return objectResult.Value;
         }
-        else if (result is ContentResult contentResult)
+        else if (actionResult is ContentResult contentResult)
         {
             // If the result is ContentResult, return the content as sample response
             return contentResult.Content;
@@ -47,6 +54,7 @@ public static class ApiMethodInfoGenerator
     // Return null if unable to generate a sample response
     return null;
 }
+
 
 public static List<ApiMethodInfo> GenerateApiMethodInfo()
 {
