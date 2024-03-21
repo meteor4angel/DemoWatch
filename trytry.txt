@@ -59,46 +59,64 @@ public static class ApiMethodInfoGenerator
         return apiMethodInfoList;
     }
 
-    private static object GenerateSampleResponseForIActionResult(MethodInfo method, IServiceProvider serviceProvider)
+    private static object GenerateSampleResponseForIActionResult(MethodInfo method, HttpContext httpContext, IServiceProvider serviceProvider)
+{
+    // Resolve the controller instance using dependency injection
+    var controllerType = method.DeclaringType;
+    var controllerConstructor = controllerType.GetConstructors().FirstOrDefault();
+
+    if (controllerConstructor == null)
     {
-        // Resolve the controller instance using dependency injection
-        var controllerType = method.DeclaringType;
-        var controllerInstance = serviceProvider.GetService(controllerType);
-
-        if (controllerInstance == null)
-        {
-            throw new InvalidOperationException($"Failed to resolve controller {controllerType.Name} from the service provider.");
-        }
-
-        // Invoke the action method
-        var actionResult = method.Invoke(controllerInstance, null) as IActionResult;
-
-        if (actionResult != null)
-        {
-            // Execute the action result to get the response
-            var result = actionResult.ExecuteResultAsync(CreateActionContext(controllerInstance)).Result;
-            if (result is ObjectResult objectResult)
-            {
-                // If the result is ObjectResult, return the value as sample response
-                return objectResult.Value;
-            }
-            else if (result is ContentResult contentResult)
-            {
-                // If the result is ContentResult, return the content as sample response
-                return contentResult.Content;
-            }
-            // Add other checks for different types of action results as needed
-        }
-
-        // Return null if unable to generate a sample response
-        return null;
+        throw new InvalidOperationException($"Controller {controllerType.Name} does not have a public constructor.");
     }
 
-    private static ActionContext CreateActionContext(object controllerInstance)
+    // Resolve constructor parameters
+    var controllerConstructorParameters = controllerConstructor.GetParameters();
+    var resolvedParameters = new List<object>();
+
+    foreach (var parameter in controllerConstructorParameters)
     {
-        var controllerContext = new ControllerContext();
-        var actionContext = new ActionContext(controllerContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
-        actionContext.Controller = (ControllerBase)controllerInstance;
-        return actionContext;
+        // Resolve constructor parameter using the service provider
+        var resolvedParameter = serviceProvider.GetService(parameter.ParameterType);
+        if (resolvedParameter == null)
+        {
+            throw new InvalidOperationException($"Failed to resolve parameter {parameter.Name} of type {parameter.ParameterType} for controller {controllerType.Name}.");
+        }
+
+        resolvedParameters.Add(resolvedParameter);
     }
+
+    // Create an instance of the controller
+    var controllerInstance = Activator.CreateInstance(controllerType, resolvedParameters.ToArray());
+
+    // Create an ActionContext
+    var actionContext = new ActionContext(httpContext, new Microsoft.AspNetCore.Routing.RouteData(), new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
+
+    // Set the controller instance in the actionContext
+    actionContext.Controller = (ControllerBase)controllerInstance;
+
+    // Invoke the action method
+    var actionResult = method.Invoke(controllerInstance, null) as IActionResult;
+
+    if (actionResult != null)
+    {
+        // Execute the action result to get the response
+        var result = actionResult.ExecuteResultAsync(actionContext).Result;
+        if (result is ObjectResult objectResult)
+        {
+            // If the result is ObjectResult, return the value as sample response
+            return objectResult.Value;
+        }
+        else if (result is ContentResult contentResult)
+        {
+            // If the result is ContentResult, return the content as sample response
+            return contentResult.Content;
+        }
+        // Add other checks for different types of action results as needed
+    }
+
+    // Return null if unable to generate a sample response
+    return null;
+}
+
 }
