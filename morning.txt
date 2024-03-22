@@ -1,42 +1,112 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Azure.Cosmos;
 using Moq;
 
-public static class CosmosDbMockHelper
+public class CosmosDbHelper<T> where T : class
 {
-    public static Mock<Container> SetupContainerMock<T>(IEnumerable<T> items) where T : class
+    private readonly Mock<Container> _mockContainer;
+
+    public CosmosDbHelper()
     {
-        var containerMock = new Mock<Container>();
-        
-        containerMock.Setup(c => c.CreateItemAsync(It.IsAny<T>(), null, default))
-                     .ReturnsAsync((T item, ItemRequestOptions options, CancellationToken cancellationToken) =>
-                     {
-                         // Simulate creation of item in CosmosDB
-                         return new ItemResponse<T>(System.Net.HttpStatusCode.Created, null, item);
-                     });
+        _mockContainer = new Mock<Container>();
+    }
 
-        containerMock.Setup(c => c.UpsertItemAsync(It.IsAny<T>(), null, default))
-                     .ReturnsAsync((T item, ItemRequestOptions options, CancellationToken cancellationToken) =>
-                     {
-                         // Simulate upserting item in CosmosDB
-                         return new ItemResponse<T>(System.Net.HttpStatusCode.OK, null, item);
-                     });
+    // Set up a mock for retrieving items
+    public CosmosDbHelper<T> SetupRetrieve(T item)
+    {
+        _mockContainer.Setup(c => c.ReadItemAsync<T>(It.IsAny<string>(), It.IsAny<PartitionKey>(), null))
+                      .ReturnsAsync(new ItemResponse<T>(item, null, null, true, null));
+        return this;
+    }
 
-        containerMock.Setup(c => c.ReplaceItemAsync(It.IsAny<T>(), It.IsAny<string>(), null, default))
-                     .ReturnsAsync((T item, string partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
-                     {
-                         // Simulate replacing item in CosmosDB
-                         return new ItemResponse<T>(System.Net.HttpStatusCode.OK, null, item);
-                     });
+    // Set up a mock for querying items
+    public CosmosDbHelper<T> SetupQuery(IQueryable<T> items)
+    {
+        var feedIterator = new Mock<FeedIterator<T>>();
+        feedIterator.SetupSequence(fi => fi.HasMoreResults)
+                    .Returns(true)
+                    .Returns(false);
 
-        containerMock.Setup(c => c.DeleteItemAsync<T>(It.IsAny<string>(), It.IsAny<PartitionKey>(), null, default))
-                     .ReturnsAsync((string id, PartitionKey partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
-                     {
-                         // Simulate deleting item from CosmosDB
-                         return new ItemResponse<T>(System.Net.HttpStatusCode.NoContent, null, null);
-                     });
+        feedIterator.Setup(fi => fi.ReadNextAsync(default))
+                    .ReturnsAsync(new FeedResponse<T>(items.ToList(), null, null, null, null, true));
 
-        // Mock queryable for repository queries
-        var queryable = Mock.Of<IQueryable<T>>(q => q.GetEnumerator() == items.GetEnumerator());
-        var feedIterator = Mock.Of<FeedIterator<T>>(fi
+        _mockContainer.Setup(c => c.GetItemQueryIterator<T>(It.IsAny<QueryDefinition>(), null, null))
+                      .Returns(feedIterator.Object);
+
+        return this;
+    }
+
+    // Set up a mock for creating an item
+    public CosmosDbHelper<T> SetupCreate()
+    {
+        _mockContainer.Setup(c => c.CreateItemAsync<T>(It.IsAny<T>(), null, null, default))
+                      .ReturnsAsync(new ItemResponse<T>(null, null, null, false, null));
+        return this;
+    }
+
+    // Set up a mock for updating an item
+    public CosmosDbHelper<T> SetupUpdate()
+    {
+        _mockContainer.Setup(c => c.UpsertItemAsync(It.IsAny<T>(), null, null, default))
+                      .ReturnsAsync(new ItemResponse<T>(null, null, null, false, null));
+        return this;
+    }
+
+    // Set up a mock for deleting an item
+    public CosmosDbHelper<T> SetupDelete()
+    {
+        _mockContainer.Setup(c => c.DeleteItemAsync<T>(It.IsAny<string>(), It.IsAny<PartitionKey>(), default))
+                      .Returns(Task.CompletedTask);
+        return this;
+    }
+
+    // Get the mock container
+    public Mock<Container> GetMockContainer()
+    {
+        return _mockContainer;
+    }
+}
+
+
+using Xunit;
+
+public class MyRepositoryTests
+{
+    [Fact]
+    public async Task RetrieveItemTest()
+    {
+        var expectedItem = new MyItem { Id = "1", Name = "Test Item" };
+
+        var cosmosDbHelper = new CosmosDbHelper<MyItem>()
+            .SetupRetrieve(expectedItem);
+
+        var repository = new MyRepository(cosmosDbHelper.GetMockContainer().Object);
+        var retrievedItem = await repository.RetrieveItemAsync("1");
+
+        Assert.NotNull(retrievedItem);
+        Assert.Equal(expectedItem.Name, retrievedItem.Name);
+    }
+
+    [Fact]
+    public async Task QueryItemsTest()
+    {
+        var expectedItems = new List<MyItem>
+        {
+            new MyItem { Id = "1", Name = "Item 1" },
+            new MyItem { Id = "2", Name = "Item 2" }
+        }.AsQueryable();
+
+        var cosmosDbHelper = new CosmosDbHelper<MyItem>()
+            .SetupQuery(expectedItems);
+
+        var repository = new MyRepository(cosmosDbHelper.GetMockContainer().Object);
+        var retrievedItems = await repository.QueryItemsAsync();
+
+        Assert.NotNull(retrievedItems);
+        Assert.Equal(expectedItems.Count(), retrievedItems.Count());
+    }
+
+    // Similarly, you can write tests for other repository methods
+}
