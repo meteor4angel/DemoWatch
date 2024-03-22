@@ -1,0 +1,83 @@
+using Microsoft.Azure.Cosmos;
+using Moq;
+using System;
+using System.Linq.Expressions;
+using System.Threading;
+using System.Threading.Tasks;
+
+public static class CosmosDbRepositoryMockHelper<T> where T : class
+{
+    public static Mock<Container> CreateMockContainer(
+        Func<Expression<Func<T, bool>>, IQueryable<T>> setupQuery,
+        Func<T, Task<ItemResponse<T>>> setupCreateAsync = null,
+        Func<T, Task<ItemResponse<T>>> setupReadAsync = null,
+        Func<T, Task<ItemResponse<T>>> setupUpdateAsync = null,
+        Func<string, Task<Response>> setupDeleteAsync = null,
+        Func<T, Task<ItemResponse<T>>> setupReplaceAsync = null,
+        Func<object[], Task<IAsyncEnumerable<T>>> setupQueryItemsAsync = null,
+        Func<Response> setupDeleteContainerAsync = null)
+    {
+        var mockContainer = new Mock<Container>(MockBehavior.Strict, "mockUri", "mockContainer");
+        
+        mockContainer.Setup(c => c.CreateItemAsync(It.IsAny<T>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((T item, PartitionKey? partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupCreateAsync != null ? setupCreateAsync(item) : Task.FromResult(new ItemResponse<T>());
+                     });
+                     
+        mockContainer.Setup(c => c.ReadItemAsync<T>(It.IsAny<string>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((string id, PartitionKey? partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupReadAsync != null ? setupReadAsync(new T()) : Task.FromResult(new ItemResponse<T>());
+                     });
+                     
+        mockContainer.Setup(c => c.UpdateItemAsync(It.IsAny<T>(), It.IsAny<string>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((T item, string id, PartitionKey? partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupUpdateAsync != null ? setupUpdateAsync(item) : Task.FromResult(new ItemResponse<T>());
+                     });
+                     
+        mockContainer.Setup(c => c.DeleteItemAsync(It.IsAny<string>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((string id, PartitionKey? partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupDeleteAsync != null ? setupDeleteAsync(id) : Task.FromResult(new Response());
+                     });
+                     
+        mockContainer.Setup(c => c.ReplaceItemAsync(It.IsAny<T>(), It.IsAny<string>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((T item, string id, PartitionKey? partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupReplaceAsync != null ? setupReplaceAsync(item) : Task.FromResult(new ItemResponse<T>());
+                     });
+                     
+        mockContainer.Setup(c => c.GetItemQueryIterator<T>(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<QueryRequestOptions>()))
+                     .Returns((string queryText, string continuationToken, QueryRequestOptions options) =>
+                     {
+                         var query = setupQuery != null ? setupQuery(null) : Enumerable.Empty<T>().AsQueryable();
+                         var feedIterator = new Mock<FeedIterator<T>>();
+                         feedIterator.Setup(fi => fi.HasMoreResults).Returns(false);
+                         feedIterator.Setup(fi => fi.ReadNextAsync(It.IsAny<CancellationToken>())).ReturnsAsync(query);
+                         return feedIterator.Object;
+                     });
+                     
+        mockContainer.Setup(c => c.GetItemLinqQueryable<T>(It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<QueryRequestOptions>()))
+                     .Returns((bool allowSynchronousQuery, string continuationToken, QueryRequestOptions options) =>
+                     {
+                         var query = setupQuery != null ? setupQuery(null) : Enumerable.Empty<T>().AsQueryable();
+                         return query;
+                     });
+                     
+        mockContainer.Setup(c => c.QueryItemsAsync<T>(It.IsAny<string>(), It.IsAny<QueryDefinition>(), It.IsAny<string>(), It.IsAny<QueryRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((string queryText, QueryDefinition queryDefinition, string continuationToken, QueryRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupQueryItemsAsync != null ? setupQueryItemsAsync(null) : Task.FromResult<IAsyncEnumerable<T>>(null);
+                     });
+                     
+        mockContainer.Setup(c => c.DeleteContainerAsync(It.IsAny<ContainerRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(() =>
+                     {
+                         return setupDeleteContainerAsync != null ? setupDeleteContainerAsync() : Task.FromResult(new Response());
+                     });
+                     
+        return mockContainer;
+    }
+}
