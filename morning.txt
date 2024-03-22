@@ -1,0 +1,42 @@
+using System;
+using System.Collections.Generic;
+using Microsoft.Azure.Cosmos;
+using Moq;
+
+public static class CosmosDbMockHelper
+{
+    public static Mock<Container> SetupContainerMock<T>(IEnumerable<T> items) where T : class
+    {
+        var containerMock = new Mock<Container>();
+        
+        containerMock.Setup(c => c.CreateItemAsync(It.IsAny<T>(), null, default))
+                     .ReturnsAsync((T item, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         // Simulate creation of item in CosmosDB
+                         return new ItemResponse<T>(System.Net.HttpStatusCode.Created, null, item);
+                     });
+
+        containerMock.Setup(c => c.UpsertItemAsync(It.IsAny<T>(), null, default))
+                     .ReturnsAsync((T item, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         // Simulate upserting item in CosmosDB
+                         return new ItemResponse<T>(System.Net.HttpStatusCode.OK, null, item);
+                     });
+
+        containerMock.Setup(c => c.ReplaceItemAsync(It.IsAny<T>(), It.IsAny<string>(), null, default))
+                     .ReturnsAsync((T item, string partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         // Simulate replacing item in CosmosDB
+                         return new ItemResponse<T>(System.Net.HttpStatusCode.OK, null, item);
+                     });
+
+        containerMock.Setup(c => c.DeleteItemAsync<T>(It.IsAny<string>(), It.IsAny<PartitionKey>(), null, default))
+                     .ReturnsAsync((string id, PartitionKey partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         // Simulate deleting item from CosmosDB
+                         return new ItemResponse<T>(System.Net.HttpStatusCode.NoContent, null, null);
+                     });
+
+        // Mock queryable for repository queries
+        var queryable = Mock.Of<IQueryable<T>>(q => q.GetEnumerator() == items.GetEnumerator());
+        var feedIterator = Mock.Of<FeedIterator<T>>(fi
