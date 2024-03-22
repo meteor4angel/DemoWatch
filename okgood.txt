@@ -92,4 +92,40 @@ public static class CosmosDbResponseHelper1
         return mockContainer;
     }
 }
-  
+
+
+
+public static class CosmosDbResponseHelper
+{
+
+    public static Task<ItemResponse<T>> CreateItemResponseAsync<T>(T item)
+    {
+        var mockResponse = new Mock<ItemResponse<T>>(MockBehavior.Strict, item, HttpStatusCode.Created, new Headers(), true);
+        return Task.FromResult(mockResponse.Object);
+    }
+
+    public static Task<ItemResponse<T>> NotFoundItemResponseAsync<T>()
+    {
+        var mockResponse = new Mock<ItemResponse<T>>(MockBehavior.Strict, default(T), HttpStatusCode.NotFound, new Headers(), false);
+        return Task.FromResult(mockResponse.Object);
+    }
+
+    public static Task<ItemResponse<T>> ReplaceItemResponseAsync<T>(T item)
+    {
+        var mockResponse = new Mock<ItemResponse<T>>(MockBehavior.Strict, item, HttpStatusCode.OK, new Headers(), true);
+        return Task.FromResult(mockResponse.Object);
+    }
+
+    public static Task<ItemResponse<T>> UpdateItemResponseAsync<T>(T item)
+    {
+        var mockResponse = new Mock<ItemResponse<T>>(MockBehavior.Strict, item, HttpStatusCode.OK, new Headers(), true);
+        return Task.FromResult(mockResponse.Object);
+    }
+
+    public static Task<Response> DeleteResponseAsync()
+    {
+        var mockResponse = new Mock<Response>(MockBehavior.Strict, HttpStatusCode.NoContent, new Headers(), null);
+        return Task.FromResult(mockResponse.Object);
+    }
+}
+
