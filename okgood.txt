@@ -1,0 +1,95 @@
+// Now, your xUnit tests can mock the repository interfaces using the helper
+public class CosmosDbTests
+{
+    [Fact]
+    public async Task TestCreateItemAsync()
+    {
+        // Arrange
+        var mockContainer = CosmosDbResponseHelper.CreateMockContainer<object>(
+            setupCreateAsync: item => Task.FromResult(new ItemResponse<object>()));
+        var repository = new ItemRepository<object>(mockContainer.Object);
+
+        var item = new object();
+
+        // Act
+        var response = await repository.CreateAsync(item);
+
+        // Assert
+        Assert.NotNull(response);
+    }
+
+    // Similarly, write tests for other repository methods...
+}
+
+using Moq;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;
+using System.Threading.Tasks;
+
+public static class CosmosDbResponseHelper1
+{
+    public static Mock<Container> CreateMockContainer<T>(
+        Func<Expression<Func<T, bool>>, IQueryable<T>> setupQuery,
+        Func<T, Task<ItemResponse<T>>> setupCreateAsync = null,
+        Func<string, Task<ItemResponse<T>>> setupReadAsync = null,
+        Func<T, Task<ItemResponse<T>>> setupUpdateAsync = null,
+        Func<string, Task<Response>> setupDeleteAsync = null,
+        Func<T, Task<ItemResponse<T>>> setupReplaceAsync = null,
+        Func<object[], Task<IAsyncEnumerable<T>>> setupQueryItemsAsync = null,
+        Func<Task<Response>> setupDeleteContainerAsync = null)
+    {
+        var mockContainer = new Mock<Container>();
+
+        // Mocking CreateItemAsync
+        mockContainer.Setup(c => c.CreateItemAsync(It.IsAny<T>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .Returns((T item, PartitionKey partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupCreateAsync != null ? setupCreateAsync(item) : Task.FromResult(Mock.Of<ItemResponse<T>>());
+                     });
+
+        // Mocking ReadItemAsync
+        mockContainer.Setup(c => c.ReadItemAsync<T>(It.IsAny<string>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .Returns((string id, PartitionKey partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupReadAsync != null ? setupReadAsync(id) : Task.FromResult(Mock.Of<ItemResponse<T>>());
+                     });
+
+        // Mocking ReplaceItemAsync
+        mockContainer.Setup(c => c.ReplaceItemAsync(It.IsAny<T>(), It.IsAny<string>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .Returns((T item, string id, PartitionKey partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupReplaceAsync != null ? setupReplaceAsync(item) : Task.FromResult(Mock.Of<ItemResponse<T>>());
+                     });
+
+
+        // Mocking ReplaceItemAsync
+        mockContainer.Setup(c => c.ReplaceItemAsync(It.IsAny<T>(), It.IsAny<string>(), It.IsAny<PartitionKey>(), It.IsAny<ItemRequestOptions>(), It.IsAny<CancellationToken>()))
+                     .Returns((T item, string id, PartitionKey partitionKey, ItemRequestOptions options, CancellationToken cancellationToken) =>
+                     {
+                         return setupReplaceAsync != null ? setupReplaceAsync(item) : Task.FromResult(Mock.Of<ItemResponse<T>>());
+                     });
+
+        // Mocking QueryItemsAsync
+        mockContainer.Setup(c => c.GetItemQueryIterator<T>(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<QueryRequestOptions>()))
+                     .Returns((string queryText, string continuationToken, QueryRequestOptions options) =>
+                     {
+                         var query = setupQuery != null ? setupQuery(null) : Enumerable.Empty<T>().AsQueryable();
+                         var feedIterator = new Mock<FeedIterator<T>>();
+                         feedIterator.Setup(fi => fi.HasMoreResults).Returns(true);
+                         feedIterator.Setup(fi => fi.ReadNextAsync(It.IsAny<CancellationToken>()))
+                                     .ReturnsAsync((CancellationToken cancellationToken) =>
+                                     {
+                                         var feedResponse = new Mock<FeedResponse<T>>();
+                                         feedResponse.Setup(fr => fr.GetEnumerator()).Returns(() => query.GetEnumerator());
+                                         return feedResponse.Object;
+                                     });
+                         return feedIterator.Object;
+                     });
+
+        return mockContainer;
+    }
+}
+  
