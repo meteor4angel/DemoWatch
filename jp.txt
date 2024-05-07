@@ -1,0 +1,27 @@
+harp
+Copy code
+using System;
+using System.Globalization;
+using System.Windows.Input;
+
+class Program
+{
+    static void Main()
+    {
+        string kanjiCharacter = "漢字"; // Your Kanji character
+        string yomigana = GetYomigana(kanjiCharacter);
+        Console.WriteLine($"Yomigana of {kanjiCharacter}: {yomigana}");
+    }
+
+    static string GetYomigana(string kanjiCharacter)
+    {
+        // Create a TextInputProcessor instance
+        var textInputProcessor = new TextInputProcessor(CultureInfo.GetCultureInfo("ja-JP"));
+
+        // Process the Kanji character
+        textInputProcessor.ProcessTextInput(kanjiCharacter);
+
+        // Get the Yomigana
+        return textInputProcessor.GetReadingForCharacter(kanjiCharacter);
+    }
+}
