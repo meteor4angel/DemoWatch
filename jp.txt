@@ -25,3 +25,80 @@ class Program
         return textInputProcessor.GetReadingForCharacter(kanjiCharacter);
     }
 }
+
+
+using System;
+using System.Collections.Generic;
+using MeCab;
+
+class Program
+{
+    static void Main()
+    {
+        List<string> kanjiList = new List<string> { "漢", "字", "学", "生" };
+        
+        // Convert Kanji list to Kana list using MeCab
+        List<string> kanaList = ConvertKanjiToKanaWithMeCab(kanjiList);
+        
+        // Sort the list of Kana characters
+        var sortedKanaList = SortKana(kanaList);
+        
+        // Map sorted Kana strings back to their corresponding Kanji strings
+        var sortedKanjiList = MapKanaToKanji(sortedKanaList, kanjiList);
+        
+        // Print the sorted list of Kanji strings
+        Console.WriteLine("Sorted Kanji List:");
+        foreach (var kanji in sortedKanjiList)
+        {
+            Console.WriteLine(kanji);
+        }
+    }
+
+    static List<string> ConvertKanjiToKanaWithMeCab(List<string> kanjiList)
+    {
+        var kanaList = new List<string>();
+
+        // Create a MeCabTagger instance
+        using (var tagger = MeCabTagger.Create())
+        {
+            foreach (var kanji in kanjiList)
+            {
+                // Parse the Kanji character
+                var node = tagger.ParseToNode(kanji);
+                
+                // Extract Kana reading from the parsed node
+                var kana = node.Feature.Split(',')[8]; // Assuming the reading is at index 8
+                kanaList.Add(kana);
+            }
+        }
+
+        return kanaList;
+    }
+
+    static List<string> SortKana(List<string> kanaList)
+    {
+        // Sort the list of Kana characters using Unicode order
+        var sortedKanaList = kanaList.OrderBy(kana => kana).ToList();
+        return sortedKanaList;
+    }
+
+    static List<string> MapKanaToKanji(List<string> sortedKanaList, List<string> originalKanjiList)
+    {
+        var sortedKanjiList = new List<string>();
+
+        // Create a dictionary to map Kana strings to their corresponding Kanji strings
+        var kanaToKanjiMap = new Dictionary<string, string>();
+        for (int i = 0; i < sortedKanaList.Count; i++)
+        {
+            kanaToKanjiMap.Add(sortedKanaList[i], originalKanjiList[i]);
+        }
+
+        // Map sorted Kana strings back to their corresponding Kanji strings
+        foreach (var kana in sortedKanaList)
+        {
+            sortedKanjiList.Add(kanaToKanjiMap[kana]);
+        }
+
+        return sortedKanjiList;
+    }
+}
