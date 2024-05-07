@@ -102,3 +102,30 @@ class Program
         return sortedKanjiList;
     }
 }
+
+
+static List<string> ConvertKanjiToKanaWithMeCab(List<string> kanjiList)
+{
+    var kanaList = new List<string>();
+
+    // Create a MeCabTagger instance
+    using (var tagger = MeCabTagger.Create())
+    {
+        foreach (var kanji in kanjiList)
+        {
+            // Parse the Kanji character
+            var node = tagger.ParseToNode(kanji);
+
+            // Extract Kana reading from the parsed node
+            var features = node.Feature.Split(',');
+            // Find the index of the reading feature
+            var readingIndex = Array.FindIndex(features, f => f.StartsWith("読み:"));
+            // If reading feature exists, extract the reading; otherwise, use surface form
+            var kana = readingIndex != -1 ? features[readingIndex].Substring(3) : node.Surface;
+            
+            kanaList.Add(kana);
+        }
+    }
+
+    return kanaList;
+}
