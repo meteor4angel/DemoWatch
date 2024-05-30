@@ -1,0 +1,63 @@
+// MiddlewareExtensionTests/MiddlewareExtensionsTests.cs
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
+using System.Net.Http;
+using System.Threading.Tasks;
+using Xunit;
+
+public class MiddlewareExtensionsTests
+{
+    [Fact]
+    public async Task UseLogged_AddsControllerMiddlewareToPipeline()
+    {
+        // Arrange
+        var mockLogger = new Mock<ILogger<ControllerMiddleware>>();
+
+        var builder = new WebHostBuilder()
+            .ConfigureServices(services =>
+            {
+                services.AddSingleton<ILogger<ControllerMiddleware>>(mockLogger.Object);
+            })
+            .Configure(app =>
+            {
+                app.UseLogged();
+                app.Run(async context =>
+                {
+                    await context.Response.WriteAsync("Hello World");
+                });
+            });
+
+        using var server = new TestServer(builder);
+        using var client = server.CreateClient();
+
+        // Act
+        var response = await client.GetAsync("/");
+        var responseString = await response.Content.ReadAsStringAsync();
+
+        // Assert
+        Assert.Equal("Hello World", responseString);
+
+        // Verify that the middleware logs the expected messages
+        mockLogger.Verify(
+            logger => logger.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("ControllerMiddleware handling request:")),
+                It.IsAny<Exception>(),
+                (Func<It.IsAnyType, Exception, string>)It.IsAny<object>()),
+            Times.Once);
+
+        mockLogger.Verify(
+            logger => logger.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("ControllerMiddleware finished handling request.")),
+                It.IsAny<Exception>(),
+                (Func<It.IsAnyType, Exception, string>)It.IsAny<object>()),
+            Times.Once);
+    }
+}
