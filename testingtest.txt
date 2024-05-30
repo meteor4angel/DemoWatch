@@ -1,0 +1,42 @@
+[Fact]
+    public async Task ApiContextMiddleware_Should_Add_Header_Name_To_Http_Response()
+    {
+        bool isNextDelegateCalled = false;
+        Mock<HttpContext> httpContextMock = new();
+        Mock<HttpResponse> httpResponseMock = new();
+        Func<Task>? callbackMethod = null;
+
+        httpResponseMock.Setup(x =>
+            x.OnStarting(It.IsAny<Func<Task>>()))
+                .Callback<Func<Task>>(m => callbackMethod = m);
+
+        httpContextMock.SetupGet(x => x.Response)
+            .Returns(httpResponseMock.Object);
+
+        httpContextMock.SetupGet(x => x.Response.Headers)
+            .Returns(new HeaderDictionary());
+
+        var fakeHttpContext = httpContextMock.Object;
+
+        var requestDelegate = new RequestDelegate(async (innerContext) =>
+        {
+            isNextDelegateCalled = true;
+
+            if (callbackMethod != null)
+            {
+                await callbackMethod.Invoke();
+            }
+            else
+            {
+                await Task.CompletedTask;
+            }
+        });
+
+        var middelware = new ApiContextMiddleware(requestDelegate);
+
+        await middelware.InvokeAsync(fakeHttpContext);
+
+        Assert.True(isNextDelegateCalled);
+        Assert.True(fakeHttpContext.Response.Headers.TryGetValue("NetVersion", out var value));
+        Assert.Equal("VersionSix", value);
+    }
