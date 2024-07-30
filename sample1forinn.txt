@@ -1,0 +1,87 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
+
+namespace PII.Scrubber
+{
+    public class PIIScrubber
+    {
+        static void Main(string[] args)
+        {
+            // Path to the input document
+            string inputFilePath = "C:\\Users\\Joyce\\Downloads\\pii-sample-data.csv";
+
+            // Get the file extension
+            string fileExtension = Path.GetExtension(inputFilePath);
+
+            // Path to the output document with the same extension
+            string outputFilePath = Path.ChangeExtension("C:\\Users\\Joyce\\Downloads\\pii-sample-data2", fileExtension);
+
+            // List of custom strings or words to be scrubbed
+            List<string> customStringsToScrub = new List<string> { "John Doe", "123 Fake Street", "Company XYZ" };
+
+            // Read the input document
+            string documentContent = File.ReadAllText(inputFilePath);
+
+            // Scrub PII and custom strings from the document
+            string scrubbedContent = ScrubPII(documentContent, customStringsToScrub);
+
+            // Write the scrubbed content to the output document
+            File.WriteAllText(outputFilePath, scrubbedContent);
+
+            Console.WriteLine("PII and custom strings have been scrubbed from the document.");
+        }
+
+        static string ScrubPII(string content, List<string> customStrings)
+        {
+            // Regular expression patterns for common types of PII
+            string emailPattern = @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}";
+            string phonePattern = @"(\+?\d{1,4}?[-.\s]?)?(?!0+\s+,?$)\(?\d{1,4}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}";
+            string ssnPattern = @"\b\d{3}-\d{2}-\d{4}\b";
+            string creditCardPattern = @"\b\d{4}[-.\s]?\d{4}[-.\s]?\d{4}[-.\s]?\d{4}\b";
+            string namePattern = @"\b([A-Z][a-z]*\s[A-Z][a-z]*)\b";
+            string passportPattern = @"\b[A-PR-WY][1-9]\d\s?\d{4}[1-9]\b";
+           // string driversLicensePattern = @"\b[A-Z0-9]{1,15}\b"; // This is a simplified pattern, varies by region
+            string ipPattern = @"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b";
+           // string ipPattern2 = @"\b\d[25][0-5]|2[0-4][0-9]|[01]?[0-9][0-9]\.\d[25][0-5]|2[0-4][0-9]|[01]?[0-9][0-9]\.\d[25][0-5]|2[0-4][0-9]|[01]?[0-9][0-9]\.\d[25][0-5]|2[0-4][0-9]|[01]?[0-9][0-9]\b";
+
+            //string ipPattern2 = @"\b\d[25][0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)";
+//ipv6 =     u"\s*(?!.*::.*::)(?:(?!:)|:(?=:))(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){6}(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)[0-9a-f]{0,4}(?:(?<=::)|(?<!:)|(?<=:)(?<!::):)|(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)){3})\s*",
+
+            string zipPattern = @"\b\d{5}(-\d{4})?\b";
+            string dobPattern = @"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b"; // Matches MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD
+            string accountNumberPattern = @"\b\d{10,12}\b"; // Simplified account number pattern
+            string medicalPattern = @"\b[A-Z0-9]{10}\b"; // Placeholder pattern for medical information
+            string racePattern = @"\b(White|Black|Asian|Hispanic|Native American|Pacific Islander|Other)\b";
+            string addressPattern = @"\d{1,5}\s[A-Za-z]{1,20}\s(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln)\b";
+
+            // Replace the PII with placeholders or remove them
+            string content1 = Regex.Replace(content, emailPattern, "[EMAIL]");
+            string content2 = Regex.Replace(content1, phonePattern, "[PHONE]");
+            string content3 = Regex.Replace(content2, ssnPattern, "[SSN]");
+            string content4 = Regex.Replace(content3, creditCardPattern, "[CREDIT CARD]");
+            string content5 = Regex.Replace(content4, namePattern, "[NAME]");
+            string content6 = Regex.Replace(content5, passportPattern, "[PASSPORT]");
+           // string content7 = Regex.Replace(content6, driversLicensePattern, "[DRIVER'S LICENSE]");
+            string content8 = Regex.Replace(content6, ipPattern, "[IP ADDRESS]");
+            string content9 = Regex.Replace(content8, zipPattern, "[ZIP CODE]");
+            string content10 = Regex.Replace(content9, dobPattern, "[DOB]");
+            string content11 = Regex.Replace(content10, accountNumberPattern, "[ACCOUNT NUMBER]");
+            string content12 = Regex.Replace(content11, medicalPattern, "[MEDICAL INFO]");
+            string content13 = Regex.Replace(content12, racePattern, "[RACE]");
+            string content14 = Regex.Replace(content13, addressPattern, "[ADDRESS]");
+
+            string newStr = string.Empty;
+            // Scrub custom strings
+            foreach (string str in customStrings)
+            {
+                string escapedStr = Regex.Escape(str);
+                newStr = Regex.Replace(content14, escapedStr, "[SCRUBBED]", RegexOptions.IgnoreCase);
+            }
+
+            return newStr;
+        }
+    }
+
+}
