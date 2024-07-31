@@ -1,0 +1,152 @@
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace SensitiveInfoProcessor
+{
+    /// <summary>
+    /// Processes and redacts sensitive information such as PII.
+    /// </summary>
+    public class SensitiveDataProcessor : ISensitiveDataProcessor
+    {
+        private List<IDataLocator> _dataLocators = new List<IDataLocator>();
+        private List<IDataLocator> _whitelistLocators = new List<IDataLocator>();
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SensitiveDataProcessor"/> class.
+        /// </summary>
+        public SensitiveDataProcessor() : this(AppDomain.CurrentDomain.BaseDirectory)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SensitiveDataProcessor"/> class.
+        /// </summary>
+        /// <param name="modelPath">The directory path of the model file.</param>
+        public SensitiveDataProcessor(string modelPath)
+        {
+            IgnoredCharacters = new List<char> { '@', '-', '.', ',' };
+            Configuration = new SensitiveDataConfig();
+            ModelPath = modelPath;
+            Initialize();
+        }
+
+        /// <summary>
+        /// Gets the path to the model file.
+        /// </summary>
+        public string ModelPath { get; }
+
+        /// <summary>
+        /// Gets the configuration for the sensitive data processor.
+        /// </summary>
+        public SensitiveDataConfig Configuration { get; }
+
+        /// <summary>
+        /// The character used to mask sensitive data. Default is '*'.
+        /// </summary>
+        public char MaskCharacter { get; set; } = '*';
+
+        /// <summary>
+        /// The list of characters that should not be masked. Default includes '@', '-', '.', ','.
+        /// </summary>
+        public List<char> IgnoredCharacters { get; set; }
+
+        /// <summary>
+        /// Adds a new data locator for redacting sensitive information.
+        /// </summary>
+        /// <param name="locator">The data locator to add.</param>
+        public void AddDataLocator(IDataLocator locator)
+        {
+            _dataLocators.Add(locator);
+        }
+
+        /// <summary>
+        /// Adds a pattern that defines a whitelist for certain data.
+        /// </summary>
+        /// <param name="whitelist">The whitelist locator to add.</param>
+        public void AddWhitelistLocator(IDataLocator whitelist)
+        {
+            _whitelistLocators.Add(whitelist);
+        }
+
+        /// <summary>
+        /// Initializes the data locators and whitelist locators.
+        /// </summary>
+        private void Initialize()
+        {
+            _dataLocators.Clear();
+            _whitelistLocators.Clear();
+
+            if (Configuration.IncludeCADriverLicense)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.CADriverLicense));
+
+            if (Configuration.IncludeEmail)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.Email));
+
+            if (Configuration.IncludeEntityRedaction)
+                _dataLocators.Add(new EntityLocator(ModelPath));
+
+            if (Configuration.IncludeIPAddress)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.IPAddress));
+
+            if (Configuration.IncludeNumber)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.Number));
+
+            if (Configuration.IncludeSSN)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.SSN));
+
+            if (Configuration.IncludeUKPassportNo)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.UKPassportNo));
+
+            if (Configuration.IncludeUSITIN)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.USITIN));
+
+            if (Configuration.IncludeUSPassport)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.USPassport));
+
+            if (Configuration.IncludeUSPhoneNumber)
+                _dataLocators.Add(new RegexLocator(RegexPatterns.USPhoneNumber));
+        }
+
+        /// <summary>
+        /// Redacts sensitive data from the input string.
+        /// </summary>
+        /// <param name="sensitiveData">The input string containing sensitive information.</param>
+        /// <returns>The redacted string.</returns>
+        public string RedactSensitiveData(string sensitiveData)
+        {
+            var redactedData = new StringBuilder(sensitiveData);
+            var matchesToRedact = new ConcurrentBag<IDataMatchResult>();
+            var whitelistMatches = new ConcurrentBag<IDataMatchResult>();
+
+            Parallel.ForEach(_dataLocators, locator =>
+            {
+                var results = locator.LocateSensitiveData(sensitiveData);
+                foreach (var result in results)
+                    matchesToRedact.Add(result);
+            });
+
+            Parallel.ForEach(_whitelistLocators, locator =>
+            {
+                var results = locator.LocateSensitiveData(sensitiveData);
+                foreach (var result in results)
+                    whitelistMatches.Add(result);
+            });
+
+            foreach (var match in matchesToRedact)
+            {
+                for (int i = match.Start; i < match.End; i++)
+                {
+                    if (!IgnoredCharacters.Contains(redactedData[i]) && !whitelistMatches.Any(w => w.IsWithinRange(i)))
+                    {
+                        redactedData[i] = MaskCharacter;
+                    }
+                }
+            }
+
+            return redactedData.ToString();
+        }
+    }
+}
