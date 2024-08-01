@@ -17,4 +17,4 @@ do secret help to my members. I like seeing them be complemented and praised fro
 
 My weakness - is that I love to learn more. I'd like to keep on learning.
 When I'm immobilize or I feel that I'm not learning anything new - it makes me feel sad and stagnant.
-
+\d+\s[A-Za-z0-9\s]+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Lane|Ln|Road|Rd|Drive|Dr|Court|Ct|Circle|Cir|Place|Pl|Way|Wy)\b
