@@ -13,22 +13,92 @@ public class WordProcessor
             // Open the Word document from the byte array
             using (var wordDocument = WordprocessingDocument.Open(memoryStream, true))
             {
-                // Iterate through all paragraphs in the document
-                foreach (var paragraph in wordDocument.MainDocumentPart.Document.Body.Descendants<Paragraph>())
+                // Process the main document part
+                ProcessDocumentPart(wordDocument.MainDocumentPart, stringToRemove);
+
+                // Process headers
+                foreach (var headerPart in wordDocument.MainDocumentPart.HeaderParts)
                 {
-                    foreach (var text in paragraph.Descendants<Text>())
-                    {
-                        if (text.Text.Contains(stringToRemove))
-                        {
-                            text.Text = text.Text.Replace(stringToRemove, string.Empty);
-                        }
-                    }
+                    ProcessDocumentPart(headerPart, stringToRemove);
+                }
+
+                // Process footers
+                foreach (var footerPart in wordDocument.MainDocumentPart.FooterParts)
+                {
+                    ProcessDocumentPart(footerPart, stringToRemove);
                 }
 
                 // Save the modified document to a new memory stream
                 wordDocument.MainDocumentPart.Document.Save();
                 memoryStream.Position = 0;
                 return memoryStream.ToArray();
+            }
+        }
+    }
+
+    private void ProcessDocumentPart(OpenXmlPart part, string stringToRemove)
+    {
+        if (part is MainDocumentPart mainPart)
+        {
+            ProcessBody(mainPart.Document.Body, stringToRemove);
+        }
+        else if (part is HeaderPart headerPart)
+        {
+            ProcessBody(headerPart.Header, stringToRemove);
+        }
+        else if (part is FooterPart footerPart)
+        {
+            ProcessBody(footerPart.Footer, stringToRemove);
+        }
+    }
+
+    private void ProcessBody(OpenXmlElement body, string stringToRemove)
+    {
+        foreach (var paragraph in body.Descendants<Paragraph>())
+        {
+            ProcessParagraph(paragraph, stringToRemove);
+        }
+
+        foreach (var table in body.Descendants<Table>())
+        {
+            ProcessTable(table, stringToRemove);
+        }
+
+        foreach (var sdt in body.Descendants<SdtElement>())
+        {
+            ProcessSdtElement(sdt, stringToRemove);
+        }
+    }
+
+    private void ProcessParagraph(Paragraph paragraph, string stringToRemove)
+    {
+        foreach (var text in paragraph.Descendants<Text>())
+        {
+            if (text.Text.Contains(stringToRemove))
+            {
+                text.Text = text.Text.Replace(stringToRemove, string.Empty);
+            }
+        }
+    }
+
+    private void ProcessTable(Table table, string stringToRemove)
+    {
+        foreach (var cell in table.Descendants<TableCell>())
+        {
+            foreach (var paragraph in cell.Descendants<Paragraph>())
+            {
+                ProcessParagraph(paragraph, stringToRemove);
+            }
+        }
+    }
+
+    private void ProcessSdtElement(SdtElement sdt, string stringToRemove)
+    {
+        foreach (var text in sdt.Descendants<Text>())
+        {
+            if (text.Text.Contains(stringToRemove))
+            {
+                text.Text = text.Text.Replace(stringToRemove, string.Empty);
             }
         }
     }
