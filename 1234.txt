@@ -1,0 +1,56 @@
+using System;
+using System.IO;
+using System.Linq;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
+
+public class WordProcessor
+{
+    public byte[] FindAndRemoveString(byte[] inputFile, string stringToRemove)
+    {
+        using (var memoryStream = new MemoryStream(inputFile))
+        {
+            // Open the Word document from the byte array
+            using (var wordDocument = WordprocessingDocument.Open(memoryStream, true))
+            {
+                // Iterate through all paragraphs in the document
+                foreach (var paragraph in wordDocument.MainDocumentPart.Document.Body.Descendants<Paragraph>())
+                {
+                    foreach (var text in paragraph.Descendants<Text>())
+                    {
+                        if (text.Text.Contains(stringToRemove))
+                        {
+                            text.Text = text.Text.Replace(stringToRemove, string.Empty);
+                        }
+                    }
+                }
+
+                // Save the modified document to a new memory stream
+                wordDocument.MainDocumentPart.Document.Save();
+                memoryStream.Position = 0;
+                return memoryStream.ToArray();
+            }
+        }
+    }
+}
+
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        // Example usage
+        string inputFilePath = "C:\\Users\\Joyce\\Downloads\\example.docx"; // Path to your input Word document
+        string stringToRemove = "example"; // String to remove
+
+        // Read the input file into a byte array
+        byte[] inputFile = File.ReadAllBytes(inputFilePath);
+
+        WordProcessor processor = new WordProcessor();
+        byte[] outputFile = processor.FindAndRemoveString(inputFile, stringToRemove);
+
+        // Optionally, save the output byte array to a file to verify the result
+        File.WriteAllBytes("C:\\Users\\Joyce\\Downloads\\output.docx", outputFile);
+
+        Console.WriteLine("String removed and Word document saved successfully.");
+    }
+}
