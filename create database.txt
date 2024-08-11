@@ -1,0 +1,94 @@
+-- Create the database (if using a database management system that requires it)
+ --CREATE DATABASE PolicyManagementDB;
+
+-- Switch to the database (if necessary)
+ USE PolicyManagementDB;
+
+-- Create the policy_details table
+CREATE TABLE policy_details (
+    policy_id         INT IDENTITY(1000, 1) PRIMARY KEY,
+    customer_id       INT,
+    policy_number     VARCHAR(50) UNIQUE,
+    policy_type       VARCHAR(50),
+    policy_start_date DATE,
+    policy_end_date   DATE,
+    premium_amount    DECIMAL(18, 2),
+    policy_status     VARCHAR(20),
+    policy_region     VARCHAR(20)
+);
+
+-- Create the customer_details table
+CREATE TABLE customer_details (
+    customer_id       INT IDENTITY(2000, 1) PRIMARY KEY,
+    policy_number     VARCHAR(50),
+    customer_region   VARCHAR(20)
+);
+
+-- Create the payment_details table
+CREATE TABLE payment_details (
+    payment_id        INT IDENTITY(3000, 1) PRIMARY KEY,
+    policy_number     VARCHAR(50) UNIQUE,
+    premium_amount    DECIMAL(18, 2),
+    payment_status    VARCHAR(20)
+);
+
+-- Create the policy_xml_data table
+CREATE TABLE policy_xml_data (
+    policy_number     VARCHAR(50) PRIMARY KEY,
+    xml_column        XML
+);
+
+-- Create the policy_code_data table
+CREATE TABLE policy_code_data (
+    policy_number     VARCHAR(50) PRIMARY KEY,
+    xml_column        XML
+);
+
+-- Create the premium_history table
+CREATE TABLE premium_history (
+    history_id        INT IDENTITY(1, 1) PRIMARY KEY,
+    policy_number     VARCHAR(50),
+    premium_amount    DECIMAL(18, 2),
+    change_date       DATETIME
+);
+
+-- Create the policy_approval table
+CREATE TABLE policy_approval (
+    approval_id       INT IDENTITY(1, 1) PRIMARY KEY,
+    policy_number     VARCHAR(50),
+    review_required   VARCHAR(3)
+);
+
+-- Insert sample data into the policy_details table
+INSERT INTO policy_details ( customer_id, policy_number, policy_type, policy_start_date, policy_end_date, premium_amount, policy_status, policy_region)
+VALUES ( 2001, 'POL123456', 'Home Insurance', '2024-01-01', '2025-01-01', 1200.50, 'Active', 'North');
+
+-- Insert sample data into the customer_details table
+INSERT INTO customer_details ( policy_number, customer_region)
+VALUES ( 'POL123456', 'North');
+
+-- Insert sample data into the payment_details table
+INSERT INTO payment_details ( policy_number, premium_amount, payment_status)
+VALUES ( 'POL123456', 1200.50, 'Paid');
+
+-- Insert sample data into the policy_xml_data table
+INSERT INTO policy_xml_data (policy_number, xml_column)
+VALUES ('POL123456', '<PolicyData><Coverage>Full</Coverage></PolicyData>');
+
+-- Insert sample data into the policy_code_data table
+INSERT INTO policy_code_data (policy_number, xml_column)
+VALUES ('POL123456', '<PolicyData><Coverage>Full</Coverage></PolicyData>');
+
+-- Insert sample data into the premium_history table
+INSERT INTO premium_history ( policy_number, premium_amount, change_date)
+VALUES ( 'POL123456', 1200.50, GETDATE());
+
+-- Insert sample data into the policy_approval table
+INSERT INTO policy_approval ( policy_number, review_required)
+VALUES ( 'POL123456', 'No');
+
+-- Commit the transactions if needed (SQL Server usually auto-commits)
+-- COMMIT;
+
+
+
