@@ -1,0 +1,397 @@
+using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Windows;
+
+namespace SQLAnalyzer
+{
+    public class SQLParse 
+    {
+        private string sqlScript;
+       
+        private const string connectionString1 = @"Data Source=DESKTOP-GGJ9QSI\SQLEXPRESS;Initial Catalog=PolicyManagementDB;Integrated Security=True";
+        private const string connectionString2 = @"Data Source=DESKTOP-GGJ9QSI\SQLEXPRESS;Initial Catalog=PolicyManagementDB2;Integrated Security=True";
+
+
+        public void AnalyzeSQLScript()
+        {
+            try
+            {
+                // Example SQL script provided as a string
+                string sqlScript = @"
+                    DECLARE
+                        @PolicyID INT = 1234,
+                        @CustomerID INT = 5678,
+                        @PolicyNumber VARCHAR(50) = 'POL123456',
+                        @PolicyType VARCHAR(50) = 'Home Insurance',
+                        @PolicyStartDate DATE = '2024-01-01',
+                        @PolicyEndDate DATE = '2025-01-01',
+                        @PremiumAmount DECIMAL(18,2) = 1200.50,
+                        @PolicyStatus VARCHAR(20) = 'Active',
+                        @XMLData XML = '<PolicyData><Coverage>Full</Coverage></PolicyData>',
+                        @PaymentStatus VARCHAR(20) = 'Paid',
+                        @PolicyRegion VARCHAR(20) = 'North',
+                        @RegionDiscount DECIMAL(5,2);
+
+                    -- First IF/ELSEIF/ELSE block with valid SQL
+                    IF EXISTS (
+                        SELECT 1 
+                        FROM policy_details 
+                        WHERE policy_number = @PolicyNumber
+                    )
+                    BEGIN
+                        UPDATE policy_details 
+                        SET policy_type = @PolicyType, 
+                            policy_start_date = @PolicyStartDate,
+                            policy_end_date = @PolicyEndDate,
+                            premium_amount = @PremiumAmount,
+                            policy_status = @PolicyStatus,
+                            policy_region = @PolicyRegion
+                        WHERE policy_number = @PolicyNumber;
+                    END
+                    ELSE IF EXISTS (
+                        SELECT 1 
+                        FROM customer_details 
+                        WHERE customer_id = @CustomerID
+                    )
+                    BEGIN
+                        UPDATE customer_details 
+                        SET policy_number = @PolicyNumber, 
+                            customer_region = @PolicyRegion
+                        WHERE customer_id = @CustomerID;
+                    END
+                    ELSE
+                    BEGIN
+                        INSERT INTO customer_details (customer_id, policy_number, customer_region) 
+                        VALUES (@CustomerID, @PolicyNumber, @PolicyRegion);
+                    END
+
+                    -- Second IF/ELSEIF/ELSE block with invalid condition (should be ignored)
+                    IF @PolicyRegion = 'North'
+                    BEGIN
+                        PRINT 'This block should be ignored';
+                    END
+                    ELSE IF @PolicyType = 'Car Insurance'
+                    BEGIN
+                        PRINT 'This block should also be ignored';
+                    END
+                    ELSE
+                    BEGIN
+                        PRINT 'And this one too';
+                    END
+
+                    -- Third IF/ELSE block with valid SQL
+                    IF EXISTS (
+                        SELECT 1 
+                        FROM payment_details 
+                        WHERE policy_number = @PolicyNumber
+                    )
+                    BEGIN
+                        UPDATE payment_details 
+                        SET premium_amount = @PremiumAmount, 
+                            payment_status = @PaymentStatus
+                        WHERE policy_number = @PolicyNumber;
+                    END
+                    ELSE
+                    BEGIN
+                        INSERT INTO payment_details (policy_number, premium_amount, payment_status) 
+                        VALUES (@PolicyNumber, @PremiumAmount, @PaymentStatus);
+                    END
+                ";
+
+                var sqlStatementsToExecute = EvaluateSqlScript(sqlScript);
+
+                List<SqlActionResult> results = new List<SqlActionResult>();
+
+                foreach (var statement in sqlStatementsToExecute)
+                {
+                    results.Add(AnalyzeStatement(statement));
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+        }
+
+        public static List<string> EvaluateSqlScript(string sqlScript)
+        {
+            var sqlStatements = new List<string>();
+            var variables = ExtractVariables(sqlScript);
+
+            string pattern = @"
+                (?<ifBlock>
+                    IF\s+(EXISTS\s*\(\s*(?<ifCondition>[\s\S]+?)\)\s*)
+                    (?<ifStatement>
+                        DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                        UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                        INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);|
+                        [^\n]+
+                    )
+                )|
+                (?<elseifBlock>
+                    ELSE\s+IF\s+(EXISTS\s*\(\s*(?<elseifCondition>[\s\S]+?)\)\s*)
+                    (?<elseifStatement>
+                        DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                        UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                        INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);|
+                        [^\n]+
+                    )
+                )|
+                (?<elseBlock>
+                    ELSE\s*
+                    (?<elseStatement>
+                        DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                        UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                        INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);|
+                        [^\n]+
+                    )
+                )";
+
+            sqlScript = Regex.Replace(sqlScript, @"\b(BEGIN|END|THEN)\b", "", RegexOptions.IgnoreCase);
+
+            var outsideStatementsPattern = @"(?<statement>
+                DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);)";
+
+            var outsideStatementsMatches = Regex.Matches(sqlScript, outsideStatementsPattern, RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline);
+
+            foreach (Match match in outsideStatementsMatches)
+            {
+                sqlStatements.Add(ReplaceVariablesInStatement(match.Groups["statement"].Value.Trim(), variables));
+            }
+
+            var matches = Regex.Matches(sqlScript, pattern, RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline);
+
+            foreach (Match match in matches)
+            {
+                bool conditionSatisfied = false;
+
+                if (match.Groups["ifBlock"].Success)
+                {
+                    string ifCondition = match.Groups["ifCondition"].Value;
+                    string ifStatement = match.Groups["ifStatement"].Value.Trim();
+
+                    if (EvaluateCondition(ifCondition, variables, out bool existsInDb1, out bool existsInDb2))
+                    {
+                        if (existsInDb1 && existsInDb2)
+                        {
+                            if (ifStatement.StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sqlStatements.Add(ReplaceVariablesInStatement(ifStatement, variables));
+                            }
+                        }
+                        else if (existsInDb1 && !existsInDb2)
+                        {
+                            if (ifStatement.StartsWith("INSERT", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sqlStatements.Add(ReplaceVariablesInStatement(ifStatement, variables));
+                            }
+                        }
+                        else if (!existsInDb1 && existsInDb2)
+                        {
+                            if (ifStatement.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sqlStatements.Add(ReplaceVariablesInStatement(ifStatement, variables));
+                            }
+                        }
+                        conditionSatisfied = true;
+                    }
+                }
+
+                if (match.Groups["elseifBlock"].Success && !conditionSatisfied)
+                {
+                    for (int i = 0; i < match.Groups["elseifBlock"].Captures.Count; i++)
+                    {
+                        string elseifCondition = match.Groups["elseifCondition"].Captures[i].Value;
+                        string elseifStatement = match.Groups["elseifStatement"].Captures[i].Value.Trim();
+
+                        if (EvaluateCondition(elseifCondition, variables, out bool existsInDb1, out bool existsInDb2))
+                        {
+                            if (existsInDb1 && existsInDb2)
+                            {
+                                if (elseifStatement.StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    sqlStatements.Add(ReplaceVariablesInStatement(elseifStatement, variables));
+                                }
+                            }
+                            else if (existsInDb1 && !existsInDb2)
+                            {
+                                if (elseifStatement.StartsWith("INSERT", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    sqlStatements.Add(ReplaceVariablesInStatement(elseifStatement, variables));
+                                }
+                            }
+                            else if (!existsInDb1 && existsInDb2)
+                            {
+                                if (elseifStatement.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    sqlStatements.Add(ReplaceVariablesInStatement(elseifStatement, variables));
+                                }
+                            }
+                            conditionSatisfied = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (match.Groups["elseBlock"].Success && !conditionSatisfied && match.Groups["ifBlock"].Success)
+                {
+                    string elseStatement = match.Groups["elseStatement"].Value.Trim();
+                    if (EvaluateCondition(match.Groups["ifCondition"].Value, variables, out bool existsInDb1, out bool existsInDb2))
+                    {
+                        if (existsInDb1 && existsInDb2)
+                        {
+                            if (elseStatement.StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sqlStatements.Add(ReplaceVariablesInStatement(elseStatement, variables));
+                            }
+                        }
+                        else if (existsInDb1 && !existsInDb2)
+                        {
+                            if (elseStatement.StartsWith("INSERT", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sqlStatements.Add(ReplaceVariablesInStatement(elseStatement, variables));
+                            }
+                        }
+                        else if (!existsInDb1 && existsInDb2)
+                        {
+                            if (elseStatement.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sqlStatements.Add(ReplaceVariablesInStatement(elseStatement, variables));
+                            }
+                        }
+                    }
+                }
+            }
+
+            return sqlStatements;
+        }
+
+        private static Dictionary<string, string> ExtractVariables(string sqlScript)
+        {
+            var variables = new Dictionary<string, string>();
+
+            string varPattern = @"@(\w+)\s+(?:\w+\([^\)]*\)|\w+)\s*=\s*([^,;]+)";
+            var varMatches = Regex.Matches(sqlScript, varPattern);
+
+            foreach (Match match in varMatches)
+            {
+                string varName = match.Groups[1].Value.Trim();
+                string varValue = match.Groups[2].Value.Trim().Trim('\'');
+
+                variables[varName] = varValue;
+            }
+
+            return variables;
+        }
+
+        private static bool EvaluateCondition(string condition, Dictionary<string, string> variables, out bool existsInDb1, out bool existsInDb2)
+        {
+            // Replace variables in the condition with their values
+            foreach (var variable in variables)
+            {
+                condition = condition.Replace($"@{variable.Key}", $"'{variable.Value}'");
+            }
+
+            existsInDb1 = CheckDatabaseForCondition(connectionString1, condition);
+            existsInDb2 = CheckDatabaseForCondition(connectionString2, condition);
+
+            return existsInDb1 || existsInDb2;
+        }
+
+        private static bool CheckDatabaseForCondition(string connectionString, string condition)
+        {
+            string query = $"{condition}";
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    var result = command.ExecuteScalar();
+                    return result != null && result != DBNull.Value && (int)result > 0;
+                }
+            }
+        }
+
+        private static string ReplaceVariablesInStatement(string statement, Dictionary<string, string> variables)
+        {
+            foreach (var variable in variables)
+            {
+                statement = statement.Replace($"@{variable.Key}", $"'{variable.Value}'");
+            }
+
+            return statement;
+        }
+
+        private static SqlActionResult AnalyzeStatement(string statement)
+        {
+            var updatePattern = @"UPDATE\s+(?<tableName>\w+)\s+SET\s+(?<setClause>[\s\S]+?)\s+WHERE\s+(?<whereClause>[\s\S]+)";
+            var insertPattern = @"INSERT\s+INTO\s+(?<tableName>\w+)\s+\((?<columns>[\s\S]+?)\)\s+VALUES\s+\((?<values>[\s\S]+?)\)";
+            var deletePattern = @"DELETE\s+FROM\s+(?<tableName>\w+)\s+WHERE\s+(?<whereClause>[\s\S]+)";
+
+            Match match;
+            SqlActionResult result = new SqlActionResult();
+
+            if ((match = Regex.Match(statement, updatePattern, RegexOptions.IgnoreCase)).Success)
+            {
+                string tableName = match.Groups["tableName"].Value;
+                string setClause = match.Groups["setClause"].Value;
+                string whereClause = match.Groups["whereClause"].Value;
+
+                string[] setPairs = setClause.Split(',');
+
+                result.ActionType = "UPDATE";
+                result.Query = $"UPDATE {tableName} SET {setClause} WHERE {whereClause}";
+            }
+            else if ((match = Regex.Match(statement, insertPattern, RegexOptions.IgnoreCase)).Success)
+            {
+                string tableName = match.Groups["tableName"].Value;
+                string[] columns = match.Groups["columns"].Value.Split(',');
+                string[] values = match.Groups["values"].Value.Split(',');
+
+                List<string> whereClauses = new List<string>();
+
+                for (int i = 0; i < columns.Length; i++)
+                {
+                    string column = columns[i].Trim();
+                    string value = values[i].Trim();
+                    whereClauses.Add($"{column} = {value}");
+                }
+
+                string whereClauseCombined = string.Join(" AND ", whereClauses);
+
+                result.ActionType = "INSERT";
+                result.Query = $"SELECT * FROM {tableName} WHERE {whereClauseCombined}";
+            }
+            else if ((match = Regex.Match(statement, deletePattern, RegexOptions.IgnoreCase)).Success)
+            {
+                string tableName = match.Groups["tableName"].Value;
+                string whereClause = match.Groups["whereClause"].Value;
+
+                result.ActionType = "DELETE";
+                result.Query = $"SELECT * FROM {tableName} WHERE {whereClause}";
+            }
+            else
+            {
+                result.ActionType = "SELECT";
+                result.Query = statement;
+            }
+
+            return result;
+        }
+    }
+
+    public class SqlActionResult
+    {
+        public string ActionType { get; set; }
+        public string Query { get; set; }
+    }
+}
