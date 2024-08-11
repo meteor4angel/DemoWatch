@@ -1,0 +1,89 @@
+private static SqlResult AnalyzeStatement(string statement)
+{
+    var updatePattern = @"UPDATE\s+(?<tableName>\w+)\s+SET\s+(?<setClause>[\s\S]+?)\s+WHERE\s+(?<whereClause>[\s\S]+)";
+    var insertPattern = @"INSERT\s+INTO\s+(?<tableName>\w+)\s+\((?<columns>[\s\S]+?)\)\s+VALUES\s+\((?<values>[\s\S]+?)\)";
+    var deletePattern = @"DELETE\s+FROM\s+(?<tableName>\w+)\s+WHERE\s+(?<whereClause>[\s\S]+)";
+
+    Match match;
+    SqlResult sqlResult = new SqlResult();
+    sqlResult.Comparisons = new List<ColumnValueComparison>();
+
+    if ((match = Regex.Match(statement, updatePattern, RegexOptions.IgnoreCase)).Success)
+    {
+        // Handle UPDATE statement
+        string tableName = match.Groups["tableName"].Value;
+        string setClause = match.Groups["setClause"].Value;
+        string whereClause = match.Groups["whereClause"].Value;
+
+        string[] setPairs = setClause.Split(',');
+        List<string> columns = new List<string>();
+
+        foreach (var pair in setPairs)
+        {
+            var parts = pair.Split('=');
+            string column = parts[0].Trim();
+            string newValue = parts[1].Trim();
+
+            columns.Add(column);
+
+            // Assuming ExecuteSelectQuery returns a list of dictionaries with the old values
+            var oldValues = ExecuteSelectQuery($"SELECT {column} FROM {tableName} WHERE {whereClause}");
+
+            sqlResult.Comparisons.Add(new ColumnValueComparison
+            {
+                ColumnName = column,
+                OldValue = oldValues.Count > 0 ? oldValues[0][column]?.ToString() : "NULL",
+                NewValue = newValue
+            });
+        }
+
+        sqlResult.Query = statement;
+    }
+    else if ((match = Regex.Match(statement, insertPattern, RegexOptions.IgnoreCase)).Success)
+    {
+        // Handle INSERT statement
+        string tableName = match.Groups["tableName"].Value;
+        string[] columns = match.Groups["columns"].Value.Split(',');
+        string[] values = match.Groups["values"].Value.Split(',');
+
+        for (int i = 0; i < columns.Length; i++)
+        {
+            string column = columns[i].Trim();
+            string value = values[i].Trim();
+
+            sqlResult.Comparisons.Add(new ColumnValueComparison
+            {
+                ColumnName = column,
+                OldValue = "NULL",
+                NewValue = value
+            });
+        }
+
+        sqlResult.Query = statement;
+    }
+    else if ((match = Regex.Match(statement, deletePattern, RegexOptions.IgnoreCase)).Success)
+    {
+        // Handle DELETE statement
+        string tableName = match.Groups["tableName"].Value;
+        string whereClause = match.Groups["whereClause"].Value;
+
+        var oldValues = ExecuteSelectQuery($"SELECT * FROM {tableName} WHERE {whereClause}");
+
+        foreach (var row in oldValues)
+        {
+            foreach (var kvp in row)
+            {
+                sqlResult.Comparisons.Add(new ColumnValueComparison
+                {
+                    ColumnName = kvp.Key,
+                    OldValue = kvp.Value?.ToString(),
+                    NewValue = "DELETE"
+                });
+            }
+        }
+
+        sqlResult.Query = statement;
+    }
+
+    return sqlResult;
+}
