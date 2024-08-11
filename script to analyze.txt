@@ -1,0 +1,84 @@
+ // Example SQL script provided as a string
+ string sqlScript = @"
+     DECLARE
+         @PolicyID INT = 1234,
+         @CustomerID INT = 5678,
+         @PolicyNumber VARCHAR(50) = 'POL123456',
+         @PolicyType VARCHAR(50) = 'Home Insurance',
+         @PolicyStartDate DATE = '2024-01-01',
+         @PolicyEndDate DATE = '2025-01-01',
+         @PremiumAmount DECIMAL(18,2) = 1200.50,
+         @PolicyStatus VARCHAR(20) = 'Active',
+         @XMLData XML = '<PolicyData><Coverage>Full</Coverage></PolicyData>',
+         @PaymentStatus VARCHAR(20) = 'Paid',
+         @PolicyRegion VARCHAR(20) = 'North',
+         @RegionDiscount DECIMAL(5,2);
+
+	 INSERT INTO customer_details (customer_id, policy_number, customer_region) 
+         VALUES (@CustomerID, 'POL1234567', @PolicyRegion);
+		 
+     -- First IF/ELSEIF/ELSE block with valid SQL
+     IF EXISTS (
+         SELECT 1 
+         FROM policy_details 
+         WHERE policy_number = @PolicyNumber
+     )
+     BEGIN
+         UPDATE policy_details 
+         SET policy_type = @PolicyType, 
+             policy_start_date = @PolicyStartDate,
+             policy_end_date = @PolicyEndDate,
+             premium_amount = @PremiumAmount,
+             policy_status = @PolicyStatus,
+             policy_region = @PolicyRegion
+         WHERE policy_number = @PolicyNumber;
+     END
+     ELSE IF EXISTS (
+         SELECT 1 
+         FROM customer_details 
+         WHERE customer_id = @CustomerID
+     )
+     BEGIN
+         UPDATE customer_details 
+         SET policy_number = @PolicyNumber, 
+             customer_region = @PolicyRegion
+         WHERE customer_id = @CustomerID;
+     END
+     ELSE
+     BEGIN
+         INSERT INTO customer_details (customer_id, policy_number, customer_region) 
+         VALUES (@CustomerID, @PolicyNumber, @PolicyRegion);
+     END
+
+     -- Second IF/ELSEIF/ELSE block with invalid condition (should be ignored)
+     IF @PolicyRegion = 'North'
+     BEGIN
+         PRINT 'This block should be ignored';
+     END
+     ELSE IF @PolicyType = 'Car Insurance'
+     BEGIN
+         PRINT 'This block should also be ignored';
+     END
+     ELSE
+     BEGIN
+         PRINT 'And this one too';
+     END
+
+     -- Third IF/ELSE block with valid SQL
+     IF EXISTS (
+         SELECT 1 
+         FROM payment_details 
+         WHERE policy_number = @PolicyNumber
+     )
+     BEGIN
+         UPDATE payment_details 
+         SET premium_amount = @PremiumAmount, 
+             payment_status = @PaymentStatus
+         WHERE policy_number = @PolicyNumber;
+     END
+     ELSE
+     BEGIN
+         INSERT INTO payment_details (policy_number, premium_amount, payment_status) 
+         VALUES (@PolicyNumber, @PremiumAmount, @PaymentStatus);
+     END
+ ";
