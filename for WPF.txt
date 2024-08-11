@@ -1,0 +1,306 @@
+using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Windows;
+
+namespace SqlScriptAnalyzer
+{
+    public partial class MainWindow : Window
+    {
+        private string sqlScript;
+        private const string connectionString = "Server=your_server_name;Database=your_database_name;User Id=your_username;Password=your_password;";
+
+        public MainWindow()
+        {
+            InitializeComponent();
+        }
+
+        private void UploadScript_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "SQL files (*.sql)|*.sql|All files (*.*)|*.*";
+            if (openFileDialog.ShowDialog() == true)
+            {
+                sqlScript = File.ReadAllText(openFileDialog.FileName);
+                AnalyzeButton.IsEnabled = true;
+                MessageBox.Show("SQL script loaded successfully.");
+            }
+        }
+
+        private void AnalyzeScript_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var sqlStatementsToExecute = EvaluateSqlScript(sqlScript);
+
+                List<ColumnValueComparison> results = new List<ColumnValueComparison>();
+
+                foreach (var statement in sqlStatementsToExecute)
+                {
+                    results.AddRange(AnalyzeStatement(statement));
+                }
+
+                ResultsGrid.ItemsSource = results;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}");
+            }
+        }
+
+        public static List<string> EvaluateSqlScript(string sqlScript)
+        {
+            var sqlStatements = new List<string>();
+            var variables = ExtractVariables(sqlScript);
+
+            string pattern = @"
+                (?<ifBlock>
+                    IF\s+(EXISTS\s*\(\s*(?<ifCondition>[\s\S]+?)\)\s*)
+                    (?<ifStatement>
+                        DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                        UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                        INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);|
+                        [^\n]+
+                    )
+                )|
+                (?<elseifBlock>
+                    ELSE\s+IF\s+(EXISTS\s*\(\s*(?<elseifCondition>[\s\S]+?)\)\s*)
+                    (?<elseifStatement>
+                        DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                        UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                        INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);|
+                        [^\n]+
+                    )
+                )|
+                (?<elseBlock>
+                    ELSE\s*
+                    (?<elseStatement>
+                        DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                        UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                        INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);|
+                        [^\n]+
+                    )
+                )";
+
+            sqlScript = Regex.Replace(sqlScript, @"\b(BEGIN|END|THEN)\b", "", RegexOptions.IgnoreCase);
+
+            var outsideStatementsPattern = @"(?<statement>
+                DELETE\s+FROM\s+\w+\s+WHERE\s+[\s\S]+?;|
+                UPDATE\s+\w+\s+SET\s+[\s\S]+?WHERE\s+[\s\S]+?;|
+                INSERT\s+INTO\s+\w+\s+\([\s\S]+?\)\s+VALUES\s+\([\s\S]+?\);)";
+
+            var outsideStatementsMatches = Regex.Matches(sqlScript, outsideStatementsPattern, RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline);
+
+            foreach (Match match in outsideStatementsMatches)
+            {
+                sqlStatements.Add(ReplaceVariablesInStatement(match.Groups["statement"].Value.Trim(), variables));
+            }
+
+            var matches = Regex.Matches(sqlScript, pattern, RegexOptions.IgnorePatternWhitespace | RegexOptions.Multiline);
+
+            foreach (Match match in matches)
+            {
+                bool conditionSatisfied = false;
+
+                if (match.Groups["ifBlock"].Success)
+                {
+                    string ifCondition = match.Groups["ifCondition"].Value;
+                    string ifStatement = match.Groups["ifStatement"].Value.Trim();
+
+                    if (IsValidSqlCondition(ifCondition) && EvaluateCondition(ifCondition, variables))
+                    {
+                        sqlStatements.Add(ReplaceVariablesInStatement(ifStatement, variables));
+                        conditionSatisfied = true;
+                    }
+                }
+
+                if (match.Groups["elseifBlock"].Success && !conditionSatisfied)
+                {
+                    for (int i = 0; i < match.Groups["elseifBlock"].Captures.Count; i++)
+                    {
+                        string elseifCondition = match.Groups["elseifCondition"].Captures[i].Value;
+                        string elseifStatement = match.Groups["elseifStatement"].Captures[i].Value.Trim();
+
+                        if (IsValidSqlCondition(elseifCondition) && EvaluateCondition(elseifCondition, variables))
+                        {
+                            sqlStatements.Add(ReplaceVariablesInStatement(elseifStatement, variables));
+                            conditionSatisfied = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (match.Groups["elseBlock"].Success && !conditionSatisfied && match.Groups["ifBlock"].Success)
+                {
+                    string elseStatement = match.Groups["elseStatement"].Value.Trim();
+                    sqlStatements.Add(ReplaceVariablesInStatement(elseStatement, variables));
+                }
+            }
+
+            return sqlStatements;
+        }
+
+        private static Dictionary<string, string> ExtractVariables(string sqlScript)
+        {
+            var variables = new Dictionary<string, string>();
+
+            string varPattern = @"@(\w+)\s+(?:\w+\([^\)]*\)|\w+)\s*=\s*([^,;]+)";
+            var varMatches = Regex.Matches(sqlScript, varPattern);
+
+            foreach (Match match in varMatches)
+            {
+                string varName = match.Groups[1].Value.Trim();
+                string varValue = match.Groups[2].Value.Trim().Trim('\'');
+
+                variables[varName] = varValue;
+            }
+
+            return variables;
+        }
+
+        private static bool EvaluateCondition(string condition, Dictionary<string, string> variables)
+        {
+            foreach (var variable in variables)
+            {
+                condition = condition.Replace($"@{variable.Key}", $"'{variable.Value}'");
+            }
+
+            string query = $"SELECT COUNT(*) FROM ({condition}) AS subquery";
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    var result = command.ExecuteScalar();
+                    return result != null && result != DBNull.Value && (int)result > 0;
+                }
+            }
+        }
+
+        private static bool IsValidSqlCondition(string condition)
+        {
+            return Regex.IsMatch(condition, @"\bSELECT\b", RegexOptions.IgnoreCase);
+        }
+
+        private static string ReplaceVariablesInStatement(string statement, Dictionary<string, string> variables)
+        {
+            foreach (var variable in variables)
+            {
+                statement = statement.Replace($"@{variable.Key}", $"'{variable.Value}'");
+            }
+
+            return statement;
+        }
+
+        private static List<ColumnValueComparison> AnalyzeStatement(string statement)
+        {
+            var updatePattern = @"UPDATE\s+(?<tableName>\w+)\s+SET\s+(?<setClause>[\s\S]+?)\s+WHERE\s+(?<whereClause>[\s\S]+)";
+            var insertPattern = @"INSERT\s+INTO\s+(?<tableName>\w+)\s+\((?<columns>[\s\S]+?)\)\s+VALUES\s+\((?<values>[\s\S]+?)\)";
+            var deletePattern = @"DELETE\s+FROM\s+(?<tableName>\w+)\s+WHERE\s+(?<whereClause>[\s\S]+)";
+
+            Match match;
+            var results = new List<ColumnValueComparison>();
+
+            if ((match = Regex.Match(statement, updatePattern, RegexOptions.IgnoreCase)).Success)
+            {
+                string tableName = match.Groups["tableName"].Value;
+                string setClause = match.Groups["setClause"].Value;
+                string whereClause = match.Groups["whereClause"].Value;
+
+                string[] setPairs = setClause.Split(',');
+
+                foreach (var pair in setPairs)
+                {
+                    var parts = pair.Split('=');
+                    string column = parts[0].Trim();
+                    string newValue = parts[1].Trim();
+
+                    string selectQuery = $"SELECT {column} AS OldValue, {newValue} AS NewValue FROM {tableName} WHERE {whereClause}";
+
+                    using (SqlConnection connection = new SqlConnection(connectionString))
+                    {
+                        connection.Open();
+                        using (SqlCommand command = new SqlCommand(selectQuery, connection))
+                        {
+                            using (SqlDataReader reader = command.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    results.Add(new ColumnValueComparison
+                                    {
+                                        ColumnName = column,
+                                        OldValue = reader["OldValue"]?.ToString(),
+                                        NewValue = reader["NewValue"]?.ToString()
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else if ((match = Regex.Match(statement, insertPattern, RegexOptions.IgnoreCase)).Success)
+            {
+                string tableName = match.Groups["tableName"].Value;
+                string[] columns = match.Groups["columns"].Value.Split(',');
+                string[] values = match.Groups["values"].Value.Split(',');
+
+                for (int i = 0; i < columns.Length; i++)
+                {
+                    string column = columns[i].Trim();
+                    string value = values[i].Trim();
+
+                    results.Add(new ColumnValueComparison
+                    {
+                        ColumnName = column,
+                        OldValue = null,
+                        NewValue = value
+                    });
+                }
+            }
+            else if ((match = Regex.Match(statement, deletePattern, RegexOptions.IgnoreCase)).Success)
+            {
+                string tableName = match.Groups["tableName"].Value;
+                string whereClause = match.Groups["whereClause"].Value;
+
+                string selectQuery = $"SELECT * FROM {tableName} WHERE {whereClause}";
+
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    using (SqlCommand command = new SqlCommand(selectQuery, connection))
+                    {
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                for (int i = 0; i < reader.FieldCount; i++)
+                                {
+                                    results.Add(new ColumnValueComparison
+                                    {
+                                        ColumnName = reader.GetName(i),
+                                        OldValue = reader.GetValue(i)?.ToString(),
+                                        NewValue = null
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return results;
+        }
+    }
+
+    public class ColumnValueComparison
+    {
+        public string ColumnName { get; set; }
+        public string OldValue { get; set; }
+        public string NewValue { get; set; }
+    }
+}
