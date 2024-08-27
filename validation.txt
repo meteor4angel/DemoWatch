@@ -1,0 +1,83 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class Validator<T>
+{
+    private readonly List<Func<T, ValidationResult>> _rules = new List<Func<T, ValidationResult>>();
+
+    public Validator<T> RuleFor(Func<T, object> propertyFunc, Func<object, bool> ruleFunc, string errorMessage)
+    {
+        _rules.Add(instance =>
+        {
+            var propertyValue = propertyFunc(instance);
+            var isValid = ruleFunc(propertyValue);
+
+            return isValid
+                ? ValidationResult.Success()
+                : ValidationResult.Failure(errorMessage);
+        });
+
+        return this;
+    }
+
+    public ValidationResult Validate(T instance)
+    {
+        var errors = _rules
+            .Select(rule => rule(instance))
+            .Where(result => !result.IsValid)
+            .Select(result => result.ErrorMessage)
+            .ToList();
+
+        return errors.Any()
+            ? ValidationResult.Failure(string.Join(", ", errors))
+            : ValidationResult.Success();
+    }
+}
+
+
+
+
+public class ValidationResult
+{
+    public bool IsValid { get; }
+    public string ErrorMessage { get; }
+
+    private ValidationResult(bool isValid, string errorMessage = null)
+    {
+        IsValid = isValid;
+        ErrorMessage = errorMessage;
+    }
+
+    public static ValidationResult Success()
+    {
+        return new ValidationResult(true);
+    }
+
+    public static ValidationResult Failure(string errorMessage)
+    {
+        return new ValidationResult(false, errorMessage);
+    }
+}
+
+
+
+
+
+public class SampleModelValidator : Validator<SampleModel>
+{
+    public SampleModelValidator()
+    {
+        RuleFor(model => model.Name, 
+                name => !string.IsNullOrWhiteSpace(name?.ToString()), 
+                "Name is required.");
+
+        RuleFor(model => model.Age, 
+                age => int.TryParse(age?.ToString(), out int result) && result > 0, 
+                "Age must be a positive number.");
+    }
+}
+
+
+
+
