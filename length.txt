@@ -1,0 +1,10 @@
+  public Validator<T> Length(Func<T, string> propertyFunc, int minLength, int maxLength, string propertyName)
+    {
+        var propertyValue = propertyFunc(_instance);
+        if (propertyValue != null && (propertyValue.Length < minLength || propertyValue.Length > maxLength))
+        {
+            _errors.Add($"{propertyName} must be between {minLength} and {maxLength} characters.");
+        }
+
+        return this;
+    }
