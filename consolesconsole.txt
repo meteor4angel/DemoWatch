@@ -1,0 +1,35 @@
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        // Define the API endpoint
+        var apiUrl = "https://api.example.com/endpoint";
+
+        // Create an instance of HttpClient
+        using (var client = new HttpClient())
+        {
+            // Set the Authorization header with the JWT token
+            var jwtToken = "your-jwt-token-here";
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
+
+            // Add custom headers
+            client.DefaultRequestHeaders.Add("X-Custom-Header1", "HeaderValue1");
+            client.DefaultRequestHeaders.Add("X-Custom-Header2", "HeaderValue2");
+
+            // Make the GET request to the API
+            var response = await client.GetAsync(apiUrl);
+
+            // Ensure the request was successful
+            response.EnsureSuccessStatusCode();
+
+            // Read and output the response content
+            var content = await response.Content.ReadAsStringAsync();
+            Console.WriteLine(content);
+        }
+    }
+}
