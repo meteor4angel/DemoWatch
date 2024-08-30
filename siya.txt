@@ -1,0 +1,32 @@
+private static async Task HandleNon200StatusCodeAsync(HttpContext context)
+    {
+        var response = new HttpResponseMessage
+        {
+            StatusCode = (HttpStatusCode)context.Response.StatusCode,
+            Content = new StringContent(JsonConvert.SerializeObject(new
+            {
+                message = "An error occurred",
+                statusCode = context.Response.StatusCode
+            }))
+        };
+
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = (int)response.StatusCode;
+        await context.Response.WriteAsync(await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task HandleExceptionAsync(HttpContext context, Exception ex)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent(JsonConvert.SerializeObject(new
+            {
+                message = ex.Message,
+                statusCode = (int)HttpStatusCode.InternalServerError
+            }))
+        };
+
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = (int)response.StatusCode;
+        await context.Response.WriteAsync(await response.Content.ReadAsStringAsync());
+    }
