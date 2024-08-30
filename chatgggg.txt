@@ -1,0 +1,95 @@
+ublic abstract class BaseController : ControllerBase
+    {
+        private readonly IErrorService _errorService;
+        private readonly ILogger<BaseController> _logger;
+
+        protected BaseController(IErrorService errorService, ILogger<BaseController> logger)
+        {
+            _errorService = errorService;
+            _logger = logger;
+        }
+
+        protected async Task<IActionResult> HandleResponseAsync<T>(T data, HttpStatusCode statusCode = HttpStatusCode.OK, string errorCode = null)
+        {
+            var message = string.IsNullOrEmpty(errorCode) 
+                ? null 
+                : await _errorService.GetErrorMessageAsync(errorCode);
+
+            return statusCode switch
+            {
+                HttpStatusCode.OK => Ok(data),
+                HttpStatusCode.Created => Created(string.Empty, data),
+                HttpStatusCode.BadRequest => BadRequest(new ErrorResponse
+                {
+                    StatusCode = (int)HttpStatusCode.BadRequest,
+                    Message = message ?? "Bad request.",
+                    Details = data
+                }),
+                HttpStatusCode.NotFound => NotFound(new ErrorResponse
+                {
+                    StatusCode = (int)HttpStatusCode.NotFound,
+                    Message = message ?? "Resource not found.",
+                    Details = data
+                }),
+                HttpStatusCode.Unauthorized => Unauthorized(new ErrorResponse
+                {
+                    StatusCode = (int)HttpStatusCode.Unauthorized,
+                    Message = message ?? "Unauthorized access.",
+                    Details = data
+                }),
+                HttpStatusCode.InternalServerError => StatusCode((int)HttpStatusCode.InternalServerError, new ErrorResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Message = message ?? "Internal server error.",
+                    Details = data
+                }),
+                _ => StatusCode((int)statusCode, new ErrorResponse
+                {
+                    StatusCode = (int)statusCode,
+                    Message = message ?? "An unexpected error occurred.",
+                    Details = data
+                }),
+            };
+        }
+
+        protected async Task<IActionResult> HandleExceptionAsync(Exception ex)
+        {
+            _logger.LogError(ex, "Exception encountered: {Message}", ex.Message);
+
+            var statusCode = ex switch
+            {
+                NotFoundException => HttpStatusCode.NotFound,
+                UnauthorizedException => HttpStatusCode.Unauthorized,
+                BadRequestException => HttpStatusCode.BadRequest,
+                _ => HttpStatusCode.InternalServerError,
+            };
+
+            var errorCode = MapToErrorCode(ex);
+            var message = await _errorService.GetErrorMessageAsync(errorCode);
+
+            return await HandleResponseAsync(new { Message = message, ex.StackTrace }, statusCode, errorCode);
+        }
+
+        private string MapToErrorCode(Exception ex)
+        {
+            return ex switch
+            {
+                NotFoundException => "ERR-404",
+                UnauthorizedException => "ERR-401",
+                BadRequestException => "ERR-400",
+                _ => "ERR-500",
+            };
+        }
+    }
+}'
+
+
+
+ if (!ModelState.IsValid)
+            {
+                return await HandleResponseAsync(ModelState, HttpStatusCode.BadRequest, "ERR-400");
+            }
+
+            var productId = await _productService.CreateProductAsync(productDto);
+            var response = new { Id = productId, Message = "Product created successfully." };
+            return await HandleResponseAsync(response, HttpStatusCode.Created);
