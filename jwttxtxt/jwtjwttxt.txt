@@ -1,0 +1,205 @@
+{
+  "JwtSettings": {
+    "Key": "YourSecretKeyHere", 
+    "Issuer": "YourIssuerHere",
+    "Audience": "YourAudienceHere",
+    "ExpireMinutes": 60
+  }
+}
+
+
+
+@page
+@model YourAppNamespace.Pages.IndexModel
+
+<h2>Generate JWT Token</h2>
+
+<form method="post">
+    <div class="form-group">
+        <label for="UserId">User ID</label>
+        <input type="text" id="UserId" class="form-control" asp-for="UserId" required />
+    </div>
+
+    <div class="form-group">
+        <label for="UserName">User Name</label>
+        <input type="text" id="UserName" class="form-control" asp-for="UserName" required />
+    </div>
+
+    <div class="form-group">
+        <label for="Email">Email</label>
+        <input type="email" id="Email" class="form-control" asp-for="Email" required />
+    </div>
+
+    <button type="submit" class="btn btn-primary" asp-page-handler="GenerateToken">Generate Token</button>
+</form>
+
+@if (Model.GeneratedToken != null)
+{
+    <div class="alert alert-success mt-3">
+        <strong>Generated Token:</strong>
+        <p>@Model.GeneratedToken</p>
+    </div>
+}
+
+
+
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using System.Security.Claims;
+using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
+
+namespace YourAppNamespace.Pages
+{
+    public class IndexModel : PageModel
+    {
+        [BindProperty]
+        public string UserId { get; set; }
+
+        [BindProperty]
+        public string UserName { get; set; }
+
+        [BindProperty]
+        public string Email { get; set; }
+
+        public string GeneratedToken { get; set; }
+
+        private readonly IConfiguration _configuration;
+
+        public IndexModel(IConfiguration configuration)
+        {
+            _configuration = configuration;
+        }
+
+        public void OnGet()
+        {
+            // Initialize or any other logic for the page load
+        }
+
+        public IActionResult OnPostGenerateToken()
+        {
+            if (ModelState.IsValid)
+            {
+                GeneratedToken = GenerateToken(UserId, UserName, Email);
+                return Page(); // Returns the token to the same page to display
+            }
+
+            return Page(); // Return the page in case of validation errors
+        }
+
+        private string GenerateToken(string userId, string userName, string email)
+        {
+            var jwtSettings = _configuration.GetSection("JwtSettings");
+
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+            var claims = new[]
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, userId),
+                new Claim(JwtRegisteredClaimNames.Name, userName),
+                new Claim(JwtRegisteredClaimNames.Email, email),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            var token = new JwtSecurityToken(
+                issuer: jwtSettings["Issuer"],
+                audience: jwtSettings["Audience"],
+                claims: claims,
+                expires: DateTime.Now.AddMinutes(double.Parse(jwtSettings["ExpireMinutes"])),
+                signingCredentials: credentials);
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+    }
+}
+
+
+using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+
+public class JwtTokenGenerator
+{
+    private readonly IConfiguration _configuration;
+
+    public JwtTokenGenerator(IConfiguration configuration)
+    {
+        _configuration = configuration;
+    }
+
+    public string GenerateToken(string userId, string userName, string email)
+    {
+        var jwtSettings = _configuration.GetSection("JwtSettings");
+
+        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+        // Add claims that can be found from the fields you want, e.g., userId, email, etc.
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, userId),
+            new Claim(JwtRegisteredClaimNames.Name, userName),
+            new Claim(JwtRegisteredClaimNames.Email, email),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()), // Unique token ID
+            new Claim("CustomField", "CustomValue") // You can add custom claims as needed
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: jwtSettings["Issuer"],
+            audience: jwtSettings["Audience"],
+            claims: claims,
+            expires: DateTime.Now.AddMinutes(double.Parse(jwtSettings["ExpireMinutes"])),
+            signingCredentials: credentials);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}
+
+
+
+public void ConfigureServices(IServiceCollection services)
+{
+    var jwtSettings = Configuration.GetSection("JwtSettings");
+
+    services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtSettings["Issuer"],
+            ValidAudience = jwtSettings["Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]))
+        };
+    });
+
+    services.AddControllers();
+}
+
+
+
+[HttpPost("login")]
+public IActionResult Login([FromBody] LoginModel model)
+{
+    if (IsValidUser(model)) // Validate your user credentials here
+    {
+        var token = _jwtTokenGenerator.GenerateToken(model.UserId, model.UserName, model.Email);
+        return Ok(new { Token = token });
+    }
+
+    return Unauthorized();
+}
