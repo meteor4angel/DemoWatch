@@ -1,0 +1,111 @@
+using Microsoft.AspNetCore.Http;
+using Moq;
+using System.Security.Claims;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+public static class StaticHttpContext
+{
+    private static readonly Mock<IHttpContextAccessor> _httpContextAccessorMock = new();
+
+    static StaticHttpContext()
+    {
+        // Initialize the mock HttpContext with a default context
+        var context = new DefaultHttpContext();
+        _httpContextAccessorMock.Setup(_ => _.HttpContext).Returns(context);
+    }
+
+    /// <summary>
+    /// Gets the mock HttpContext for unit testing.
+    /// </summary>
+    public static HttpContext HttpContext => _httpContextAccessorMock.Object.HttpContext;
+
+    /// <summary>
+    /// Sets a custom HttpContext for unit testing.
+    /// </summary>
+    public static void SetHttpContext(HttpContext context)
+    {
+        _httpContextAccessorMock.Setup(_ => _.HttpContext).Returns(context);
+    }
+
+    /// <summary>
+    /// Mocks HttpContext with a user having specific claims.
+    /// </summary>
+    public static void SetMockUser(string userId, string username, params Claim[] claims)
+    {
+        var identity = new ClaimsIdentity(claims, "TestAuthType");
+        var principal = new ClaimsPrincipal(identity);
+
+        var context = new DefaultHttpContext
+        {
+            User = principal
+        };
+
+        SetHttpContext(context);
+    }
+
+    /// <summary>
+    /// Mocks HttpContext with request headers.
+    /// </summary>
+    public static void SetMockHeaders(Dictionary<string, string> headers)
+    {
+        var context = new DefaultHttpContext();
+        foreach (var header in headers)
+        {
+            context.Request.Headers[header.Key] = header.Value;
+        }
+        SetHttpContext(context);
+    }
+}
+
+
+
+
+
+
+
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
+using System.Collections.Generic;
+
+[TestClass]
+public class HttpContextTests
+{
+    [TestMethod]
+    public void Test_HttpContext_UserClaims()
+    {
+        // Arrange
+        StaticHttpContext.SetMockUser("12345", "testUser",
+            new Claim(ClaimTypes.NameIdentifier, "12345"),
+            new Claim(ClaimTypes.Name, "testUser")
+        );
+
+        // Act
+        var user = StaticHttpContext.HttpContext.User;
+
+        // Assert
+        Assert.IsNotNull(user);
+        Assert.AreEqual("12345", user.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+        Assert.AreEqual("testUser", user.Identity?.Name);
+    }
+
+    [TestMethod]
+    public void Test_HttpContext_Headers()
+    {
+        // Arrange
+        var headers = new Dictionary<string, string>
+        {
+            { "Authorization", "Bearer test-token" },
+            { "Custom-Header", "TestValue" }
+        };
+        StaticHttpContext.SetMockHeaders(headers);
+
+        // Act
+        var requestHeaders = StaticHttpContext.HttpContext.Request.Headers;
+
+        // Assert
+        Assert.AreEqual("Bearer test-token", requestHeaders["Authorization"]);
+        Assert.AreEqual("TestValue", requestHeaders["Custom-Header"]);
+    }
+}
